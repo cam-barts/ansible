@@ -56,6 +56,7 @@ This document outlines the plan to build an Ansible repository integrated with m
 -   Initial setup steps:
     -   Ensure `ansible` is installed on the host machine via `user_init` script
     -   Use `ansible-pull` to fetch and run configuration playbooks
+        - `ansible-pull -U https://github.com/cam-barts/ansible.git -d ~/ansible-pwnbox -i pwnbox -C main playbooks/configure_pwnbox.yml`
 
 ### TO DOs
 - [ ] Install `ansible` during initial setup (`user_init`)
