@@ -1,0 +1,7 @@
+- name: Configure PwnBox
+  hosts: pwnbox
+  gather_facts: true
+
+  roles:
+    - common
+    - pwnbox

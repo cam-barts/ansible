@@ -1,0 +1,8 @@
+- name: Clone dotfiles
+  git:
+    repo: 'https://github.com/cam-barts/.dotfiles.git'
+    dest: "~/.dotfiles"
+    update: yes
+
+- name: Deploy dotfiles via stow
+  command: stow --dir=~/.dotfiles --target=~ .
