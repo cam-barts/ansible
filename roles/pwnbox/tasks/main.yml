@@ -4,5 +4,30 @@
     dest: "~/.dotfiles"
     update: yes
 
+- name: Remove Conflicting Files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.bashrc"
+    - "{{ ansible_env.HOME }}/.profile"
+
 - name: Deploy dotfiles via stow
-  command: stow --dir=~/.dotfiles --target=~ .
+  shell: stow -vt ~ */
+  args:
+    chdir: "{{ ansible_env.HOME }}/.dotfiles"
+
+- name: Install Starship prompt
+  shell: curl -sS https://starship.rs/install.sh | sh -s -- -b "/usr/local/bin" -y
+  args:
+    creates: "/usr/local/bin/starship"
+  become: true
+
+- name: Install Atuin history tool
+  shell: bash <(curl --proto '=https' --tlsv1.2 -sSf https://setup.atuin.sh)
+  args:
+    executable: /bin/bash
+    creates: "/usr/local/bin/atuin"
+  environment:
+    ATUIN_INSTALL_DIR: "/usr/local/bin"
+  become: true

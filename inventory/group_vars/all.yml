@@ -1,9 +1,9 @@
 # software to install everywhere
 package_list:
-  - mask
-  - starship
+  # - mask
+  # - starship
   - kitty
   - neovim
   - stow
-  - hosts
-  - atuin
+  # - hosts
+  # - atuin

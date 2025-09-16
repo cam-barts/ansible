@@ -2,8 +2,12 @@
   apt:
     update_cache: yes
     cache_valid_time: 3600
+  become: true
 
 - name: Install common packages
   apt:
-    name: "{{ package_list }}"
+    name: "{{ item }}"
     state: present
+    install_recommends: true
+  loop: "{{ package_list }}"
+  become: true
