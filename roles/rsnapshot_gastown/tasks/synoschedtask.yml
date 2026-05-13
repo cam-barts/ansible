@@ -1,0 +1,46 @@
+---
+# Rewrites a single synoschedtask definition so it invokes the wrapper with
+# an explicit interval. DSM stores three references to the command in each
+# .task file and they must agree:
+#
+#   action=#common:run#: <shell>
+#   app args={..., "script":"<shell>"}
+#   cmd=<base64(shell)>
+#
+# `replace` (not `lineinfile`) so a missed regex never appends a duplicate.
+# Format verified against /usr/syno/etc/synoschedule.d/root/{4,5,6,7}.task
+# on gastown 2026-05-12.
+
+- name: "synoschedtask {{ task.id }} - stat the .task file"
+  stat:
+    path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
+  register: synoschedtask_stat
+
+- name: "synoschedtask {{ task.id }} - skip block if the file is not present"
+  when: synoschedtask_stat.stat.exists
+  block:
+
+    - name: "synoschedtask {{ task.id }} - back up the original once"
+      copy:
+        src: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
+        dest: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task.pre-ansible.bak"
+        remote_src: true
+        force: false
+
+    - name: "synoschedtask {{ task.id }} - rewrite the action= line"
+      replace:
+        path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
+        regexp: '^action=#common:run#:.*$'
+        replace: "action=#common:run#: {{ rsnapshot_wrapper_path }} {{ task.interval }}"
+
+    - name: "synoschedtask {{ task.id }} - rewrite the script field in app args"
+      replace:
+        path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
+        regexp: '("script":")[^"]*(")'
+        replace: '\1{{ rsnapshot_wrapper_path }} {{ task.interval }}\2'
+
+    - name: "synoschedtask {{ task.id }} - rewrite the base64 cmd= line"
+      replace:
+        path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
+        regexp: '^cmd=.*$'
+        replace: "cmd={{ (rsnapshot_wrapper_path ~ ' ' ~ task.interval) | b64encode }}"

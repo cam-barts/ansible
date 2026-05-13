@@ -1,0 +1,9 @@
+[synology]
+gastown ansible_host=gastown.shadeking.cam.local
+
+[synology:vars]
+ansible_user=nux
+ansible_ssh_private_key_file=~/.ssh/rsnapshot_key
+# DSM 7.3 ships /usr/bin/python3 == 3.8 which is below ansible-core 2.18+
+# minimum (3.9). Pin to the SynoCommunity Python 3.12 install.
+ansible_python_interpreter=/usr/local/bin/python3.12

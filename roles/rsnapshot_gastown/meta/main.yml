@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: rsnapshot_gastown
+  author: Cam Barts
+  description: >
+    Manages SynoCommunity rsnapshot on the gastown Synology — config file
+    in a package-upgrade-safe path, an explicit start/ok/fail wrapper for
+    the synoschedtask cron entries, and the source list for the homelab
+    fleet (warrig, citadel, Pis).
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: GenericUNIX
+      versions:
+        - any
+
+dependencies: []
