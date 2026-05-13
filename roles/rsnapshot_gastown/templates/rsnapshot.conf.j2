@@ -56,9 +56,8 @@ loglevel	{{ rsnapshot_loglevel }}
 logfile		{{ rsnapshot_log_path }}
 lockfile	{{ rsnapshot_lockfile }}
 
-# SSH key for source-side pulls. Same key already trusts gastown→warrig
-# and gastown→pirate@<pi> for all three Pis. Citadel trust pending —
-# see TODO below.
+# SSH key for source-side pulls. Same key trusts gastown→warrig,
+# gastown→nux@citadel, and gastown→pirate@<pi> for all three Pis.
 ssh_args	{{ rsnapshot_ssh_args }}
 
 ###############################
@@ -71,11 +70,7 @@ ssh_args	{{ rsnapshot_ssh_args }}
 # warrig — primary desktop. Verified gastown→warrig key trust 2026-05-12.
 backup	{{ warrig.ssh_target }}:{{ warrig.source_path }}	{{ warrig.name }}/
 
-# citadel — secondary host (Docker fleet). gastown→citadel SSH key trust
-# was NOT yet in place on 2026-05-12 (Permission denied (publickey)).
-# Uncomment after the rsnapshot_key public key is appended to
-# citadel:/home/nux/.ssh/authorized_keys.
-# TODO(2026-05-12): re-enable once citadel keying is done.
+# citadel — secondary host (Docker fleet). gastown→citadel key trust established 2026-05-12.
 {% if citadel.disabled | default(false) %}#{% endif %}backup	{{ citadel.ssh_target }}:{{ citadel.source_path }}	{{ citadel.name }}/
 
 # Raspberry Pis — user is pirate, not nux (no /home/nux exists on the Pis).

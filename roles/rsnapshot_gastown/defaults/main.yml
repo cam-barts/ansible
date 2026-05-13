@@ -49,8 +49,7 @@ rsnapshot_ntfy_priority_fail: high
 
 # Sources. gastown pulls from each over SSH using rsnapshot_ssh_key.
 # Pi user is `pirate` per ~/.ssh/config (no nux user on the Pis).
-# `disabled: true` renders the line commented in rsnapshot.conf — used
-# for citadel until gastown→citadel key trust is in place.
+# `disabled: true` renders the line commented in rsnapshot.conf.
 rsnapshot_sources:
   - name: warrig
     ssh_target: nux@warrig.shadeking.cam.local
@@ -59,12 +58,7 @@ rsnapshot_sources:
   - name: citadel
     ssh_target: nux@citadel.shadeking.cam.local
     source_path: /home/nux/
-    disabled: true
-    note: |
-      secondary host (Docker fleet). gastown→citadel SSH key trust
-      was NOT yet in place on 2026-05-12 (Permission denied (publickey)).
-      Re-enable (set disabled: false) once the rsnapshot_key public key is
-      appended to citadel:/home/nux/.ssh/authorized_keys.
+    note: "secondary host (Docker fleet). gastown→citadel key trust established 2026-05-12."
   - name: wellerman
     ssh_target: pirate@wellerman.shadeking.cam.local
     source_path: /home/pirate/
