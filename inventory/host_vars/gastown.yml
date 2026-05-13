@@ -1,0 +1,6 @@
+# nux is in the DSM `administrators` group, which gives direct write access
+# to every path the rsnapshot_gastown role touches (his home, the
+# pi_rsnapshots tree, and /usr/syno/etc/synoschedule.d/root/*.task).
+# Sudo isn't configured for nux on gastown (`sudo -n whoami` → "a password
+# is required") and intentionally isn't needed here.
+ansible_become: false

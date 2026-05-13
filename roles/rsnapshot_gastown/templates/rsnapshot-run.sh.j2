@@ -1,0 +1,42 @@
+#!/bin/sh
+# rsnapshot-run.sh — invoked by synoschedtask (hourly/daily/weekly/monthly).
+# Runs rsnapshot with the live config path and sends notifications via ntfy
+# with priority by outcome.
+#
+# Replaces the legacy "cmd1 && cmd2 || cmd3" chain whose || branch fired the
+# "Completed" message on FAILURE — that bug hid the April 13 break for a
+# month. Logic is now an explicit if/then/else so success ≠ failure ≠ start.
+
+set -u
+
+interval="${1:-hourly}"
+config="{{ rsnapshot_config_path }}"
+ntfy="{{ rsnapshot_ntfy_bin }}"
+topic="{{ rsnapshot_ntfy_topic }}"
+rsnapshot="{{ rsnapshot_bin }}"
+
+"$ntfy" publish \
+    -t "rsnapshot $interval started" \
+    -p {{ rsnapshot_ntfy_priority_start }} \
+    --tags=backup,floppy_disk \
+    "$topic" \
+    "rsnapshot $interval started on gastown" >/dev/null 2>&1 || true
+
+if "$rsnapshot" -c "$config" "$interval"; then
+    "$ntfy" publish \
+        -t "rsnapshot $interval ok" \
+        -p {{ rsnapshot_ntfy_priority_ok }} \
+        --tags=backup,white_check_mark \
+        "$topic" \
+        "rsnapshot $interval completed cleanly on gastown" >/dev/null 2>&1 || true
+    exit 0
+else
+    rc=$?
+    "$ntfy" publish \
+        -t "rsnapshot $interval FAILED" \
+        -p {{ rsnapshot_ntfy_priority_fail }} \
+        --tags=backup,warning \
+        "$topic" \
+        "rsnapshot $interval exited $rc on gastown — see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
+    exit "$rc"
+fi

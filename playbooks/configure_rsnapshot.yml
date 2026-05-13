@@ -1,0 +1,5 @@
+- name: Configure rsnapshot on the Synology
+  hosts: synology
+  gather_facts: false
+  roles:
+    - rsnapshot_gastown

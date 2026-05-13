@@ -1,0 +1,85 @@
+---
+# Snapshot tree on /volume1. Preserves the existing pi_rsnapshots/ directory
+# so historical hardlinked rotations age out naturally instead of being
+# orphaned by a path move. (Strategy doc §5 had this same path; Cam's
+# 2026-05-12 chat instruction said /volume1/pi_rsnapshots/ — direct-fix
+# crew kept the existing tree to avoid a one-off migration.)
+rsnapshot_snapshot_root: /volume1/NetBackup/pi_rsnapshots/
+
+# Config + log + lockfile live under nux's home (which is on /volume1, so
+# upgrade-safe — outside SYNOPKG_PKGDEST/var). nux can edit these without
+# sudo, which keeps day-to-day rsnapshot tweaks out of the root path.
+rsnapshot_config_path: /var/services/homes/nux/rsnapshot.conf
+rsnapshot_log_path: /var/services/homes/nux/rsnapshot.log
+rsnapshot_lockfile: /var/services/homes/nux/rsnapshot.pid
+
+# Binaries. rsnapshot symlink survives the 1.5.1-5 install; ntfy is the
+# binwiederhier standalone v1.29.0 unpacked in nux's home.
+rsnapshot_bin: /usr/local/bin/rsnapshot
+rsnapshot_ntfy_bin: /var/services/homes/nux/ntfy_1.29.0_linux_x86_64/ntfy
+
+# Wrapper that synoschedtask 4/5/6/7 call. Lives in nux's home for the
+# same reason as the config — editable without sudo.
+rsnapshot_wrapper_path: /var/services/homes/nux/rsnapshot-run.sh
+rsnapshot_wrapper_owner: nux
+rsnapshot_wrapper_group: users
+
+# Retention. Locked-in 2026-05-12 (24h/7d/4w/12m).
+rsnapshot_retain_hourly: 24
+rsnapshot_retain_daily: 7
+rsnapshot_retain_weekly: 4
+rsnapshot_retain_monthly: 12
+
+# Logging — verbose=4/loglevel=4 to surface per-source rsync chatter while
+# the new config beds in. Drop to 2/3 once stable.
+rsnapshot_verbose: 4
+rsnapshot_loglevel: 4
+
+# SSH key gastown uses to pull from each source. Same key already trusts
+# warrig and the Pis.
+rsnapshot_ssh_key: /var/services/homes/nux/.ssh/rsnapshot_key
+rsnapshot_ssh_args: "-i {{ rsnapshot_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+
+# Notification settings. Single topic per Cam's 2026-05-12 decision —
+# differentiate by priority + tag, not by topic.
+rsnapshot_ntfy_topic: changeme_set_via_vault
+rsnapshot_ntfy_priority_start: min
+rsnapshot_ntfy_priority_ok: default
+rsnapshot_ntfy_priority_fail: high
+
+# Sources. gastown pulls from each over SSH using rsnapshot_ssh_key.
+# Pi user is `pirate` per ~/.ssh/config (no nux user on the Pis).
+# `disabled: true` renders the line commented in rsnapshot.conf — used
+# for citadel until gastown→citadel key trust is in place.
+rsnapshot_sources:
+  - name: warrig
+    ssh_target: nux@warrig.shadeking.cam.local
+    source_path: /home/nux/
+    note: "primary desktop. Verified gastown→warrig key trust 2026-05-12."
+  - name: citadel
+    ssh_target: nux@citadel.shadeking.cam.local
+    source_path: /home/nux/
+    disabled: true
+    note: |
+      secondary host (Docker fleet). gastown→citadel SSH key trust
+      was NOT yet in place on 2026-05-12 (Permission denied (publickey)).
+      Re-enable (set disabled: false) once the rsnapshot_key public key is
+      appended to citadel:/home/nux/.ssh/authorized_keys.
+  - name: wellerman
+    ssh_target: pirate@wellerman.shadeking.cam.local
+    source_path: /home/pirate/
+  - name: black-pearl
+    ssh_target: pirate@black-pearl.shadeking.cam.local
+    source_path: /home/pirate/
+  - name: billy-of-tea
+    ssh_target: pirate@billy-of-tea.shadeking.cam.local
+    source_path: /home/pirate/
+
+# synoschedtask IDs that drive rsnapshot. Cam's existing layout: 4=hourly,
+# 5=daily, 6=weekly, 7=monthly. Set to [] to skip cron rewriting if Cam
+# wants to manage the task definitions through DSM UI instead.
+rsnapshot_synoschedtask_ids:
+  - { id: 4, interval: hourly }
+  - { id: 5, interval: daily }
+  - { id: 6, interval: weekly }
+  - { id: 7, interval: monthly }

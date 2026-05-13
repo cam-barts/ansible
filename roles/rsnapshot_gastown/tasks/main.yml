@@ -1,0 +1,50 @@
+---
+# nux is in the `administrators` group on gastown, so:
+#   - /var/services/homes/nux/* is owned by nux:users (write directly)
+#   - /volume1/NetBackup/pi_rsnapshots/ is owned by nux:users
+#   - /usr/syno/etc/synoschedule.d/root/*.task is rw-rw root:administrators
+# i.e. no sudo escalation is required for any path this role touches.
+
+- name: Ensure rsnapshot config directory exists
+  file:
+    path: "{{ rsnapshot_config_path | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure rsnapshot snapshot root exists
+  file:
+    path: "{{ rsnapshot_snapshot_root }}"
+    state: directory
+
+- name: Back up the previous rsnapshot.conf once
+  copy:
+    src: "{{ rsnapshot_config_path }}"
+    dest: "{{ rsnapshot_config_path }}.pre-ansible.bak"
+    remote_src: true
+    force: false
+  failed_when: false
+
+- name: Render rsnapshot.conf
+  template:
+    src: rsnapshot.conf.j2
+    dest: "{{ rsnapshot_config_path }}"
+    owner: nux
+    group: users
+    mode: "0644"
+    validate: "{{ rsnapshot_bin }} -c %s configtest"
+
+- name: Install rsnapshot-run wrapper
+  template:
+    src: rsnapshot-run.sh.j2
+    dest: "{{ rsnapshot_wrapper_path }}"
+    owner: "{{ rsnapshot_wrapper_owner }}"
+    group: "{{ rsnapshot_wrapper_group }}"
+    mode: "0755"
+
+- name: Point synoschedtask entries at the wrapper
+  include_tasks: synoschedtask.yml
+  loop: "{{ rsnapshot_synoschedtask_ids }}"
+  loop_control:
+    loop_var: task
+    label: "id={{ task.id }} interval={{ task.interval }}"
+  when: rsnapshot_synoschedtask_ids | length > 0

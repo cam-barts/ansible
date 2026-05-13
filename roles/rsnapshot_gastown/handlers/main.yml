@@ -1,0 +1,3 @@
+---
+# DSM picks up updated synoschedtask .task files automatically; no daemon
+# reload is required. Handlers kept here for symmetry with other roles.
