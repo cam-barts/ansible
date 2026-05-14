@@ -1,0 +1,30 @@
+- name: Update apt cache (ignore errors from broken repos)
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: true
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Install node_exporter (Debian/Raspbian)
+  apt:
+    name: prometheus-node-exporter
+    state: present
+  become: true
+  when: ansible_os_family == "Debian"
+
+- name: Install node_exporter (Archlinux)
+  pacman:
+    name: prometheus-node-exporter
+    state: present
+    update_cache: yes
+  become: true
+  when: ansible_os_family == "Archlinux"
+
+- name: Enable and start node_exporter
+  systemd:
+    name: prometheus-node-exporter
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true

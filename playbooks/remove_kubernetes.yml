@@ -1,0 +1,5 @@
+- name: Remove Kubernetes from Raspberry Pis
+  hosts: raspberrypis
+  gather_facts: false
+  roles:
+    - remove_kubernetes

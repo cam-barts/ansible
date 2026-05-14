@@ -16,6 +16,27 @@
     path: "{{ rsnapshot_snapshot_root }}"
     state: directory
 
+# /volume1/NetBackup/ is root-owned at the top level; nux can't mkdir
+# beneath it without become. Keeps log output off /dev/md0 (the 2.3G DSM
+# system root) where rsnapshot.log + rsnapshot-run.last.out filled / to
+# 100% on 2026-05-12.
+- name: Ensure rsnapshot log directory exists on /volume1
+  file:
+    path: "{{ rsnapshot_log_dir }}"
+    state: directory
+    owner: nux
+    group: users
+    mode: "0755"
+  become: true
+
+- name: Render rsnapshot excludes file
+  template:
+    src: rsnapshot.excludes.j2
+    dest: "{{ rsnapshot_excludes_path }}"
+    owner: nux
+    group: users
+    mode: "0644"
+
 - name: Back up the previous rsnapshot.conf once
   copy:
     src: "{{ rsnapshot_config_path }}"

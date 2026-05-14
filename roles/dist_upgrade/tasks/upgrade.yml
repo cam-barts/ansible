@@ -1,0 +1,31 @@
+---
+- name: Update apt cache
+  command: apt-get update --allow-releaseinfo-change
+  register: apt_update_result
+  changed_when: "'Fetched' in apt_update_result.stdout"
+
+- name: Minimal safe upgrade first
+  command: apt-get upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: safe_upgrade_result
+  changed_when: "'0 upgraded' not in safe_upgrade_result.stdout"
+
+- name: Full dist-upgrade
+  command: apt-get dist-upgrade -y --allow-downgrades -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: dist_upgrade_result
+  changed_when: "'0 upgraded' not in dist_upgrade_result.stdout"
+
+- name: Install latest Raspberry Pi firmware
+  raw: DEBIAN_FRONTEND=noninteractive apt-get install -y raspberrypi-kernel raspberrypi-bootloader || true
+  changed_when: false
+
+- name: Remove obsolete packages
+  raw: apt-get autoremove -y --purge
+  changed_when: false
+
+- name: Clean apt cache
+  raw: apt-get autoclean
+  changed_when: false

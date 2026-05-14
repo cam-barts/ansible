@@ -1,0 +1,5 @@
+- name: Configure Docker log rotation on Raspberry Pis
+  hosts: raspberrypis
+  gather_facts: false
+  roles:
+    - docker_log_rotation

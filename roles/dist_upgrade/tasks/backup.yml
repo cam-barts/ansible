@@ -1,0 +1,29 @@
+---
+- name: Create backup directory
+  file:
+    path: "/root/pre-upgrade-backup-{{ ansible_distribution_release }}"
+    state: directory
+    mode: "0700"
+
+- name: Check if /etc backup already exists
+  stat:
+    path: "/root/pre-upgrade-backup-{{ ansible_distribution_release }}/etc-backup.tar.gz"
+  register: etc_backup
+
+- name: Backup /etc
+  archive:
+    path: /etc
+    dest: "/root/pre-upgrade-backup-{{ ansible_distribution_release }}/etc-backup.tar.gz"
+    format: gz
+    force_archive: true
+  when: not etc_backup.stat.exists
+
+- name: Export installed package list (dpkg selections)
+  shell: dpkg --get-selections > /root/pre-upgrade-backup-{{ ansible_distribution_release }}/package-selections.txt
+  args:
+    creates: "/root/pre-upgrade-backup-{{ ansible_distribution_release }}/package-selections.txt"
+
+- name: Export installed package list (with versions)
+  shell: apt list --installed 2>/dev/null > /root/pre-upgrade-backup-{{ ansible_distribution_release }}/apt-installed.txt
+  args:
+    creates: "/root/pre-upgrade-backup-{{ ansible_distribution_release }}/apt-installed.txt"

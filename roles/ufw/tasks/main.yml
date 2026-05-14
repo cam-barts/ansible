@@ -1,0 +1,52 @@
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+  become: true
+
+- name: Set default deny incoming
+  community.general.ufw:
+    default: deny
+    direction: incoming
+  become: true
+
+- name: Set default allow outgoing
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+  become: true
+
+- name: Allow SSH (rate limited)
+  community.general.ufw:
+    rule: limit
+    port: "22"
+    proto: tcp
+  become: true
+
+- name: Allow all traffic from main workstation
+  community.general.ufw:
+    rule: allow
+    from_ip: 192.168.1.168
+  become: true
+
+- name: Allow node_exporter from citadel
+  community.general.ufw:
+    rule: allow
+    port: "9100"
+    proto: tcp
+    from_ip: 192.168.1.88
+  become: true
+
+- name: Allow extra ports from citadel
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    from_ip: 192.168.1.88
+  loop: "{{ ufw_allow_from_citadel | default([]) }}"
+  become: true
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  become: true

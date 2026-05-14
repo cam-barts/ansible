@@ -1,0 +1,12 @@
+---
+- name: Add net.ifnames=0 to /boot/cmdline.txt for classic interface naming
+  raw: grep -q 'net.ifnames=0' /boot/cmdline.txt || sed -i 's/rootwait/net.ifnames=0 rootwait/' /boot/cmdline.txt
+  changed_when: false
+
+- name: Unmask dhcpcd service
+  raw: systemctl unmask dhcpcd
+  changed_when: false
+
+- name: Enable dhcpcd service
+  raw: systemctl enable dhcpcd
+  changed_when: false

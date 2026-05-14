@@ -1,0 +1,30 @@
+- name: Read existing daemon.json
+  slurp:
+    src: /etc/docker/daemon.json
+  become: true
+  register: existing_daemon_json
+  failed_when: false
+
+- name: Set existing config
+  set_fact:
+    docker_config: "{{ (existing_daemon_json.content | b64decode | from_json) if (existing_daemon_json.content is defined) else {} }}"
+
+- name: Merge log rotation into daemon.json
+  copy:
+    content: "{{ docker_config | combine(log_config) | to_nice_json }}\n"
+    dest: /etc/docker/daemon.json
+  become: true
+  vars:
+    log_config:
+      log-driver: json-file
+      log-opts:
+        max-size: "10m"
+        max-file: "3"
+  notify: restart docker
+
+- name: Ensure log rotation applies to running containers
+  debug:
+    msg: >-
+      Note: Log rotation only applies to newly created containers.
+      Recreate existing containers (docker compose up -d --force-recreate)
+      for the new limits to take effect.

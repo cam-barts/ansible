@@ -6,12 +6,28 @@
 # crew kept the existing tree to avoid a one-off migration.)
 rsnapshot_snapshot_root: /volume1/NetBackup/pi_rsnapshots/
 
-# Config + log + lockfile live under nux's home (which is on /volume1, so
-# upgrade-safe — outside SYNOPKG_PKGDEST/var). nux can edit these without
-# sudo, which keeps day-to-day rsnapshot tweaks out of the root path.
+# Config + lockfile live under nux's home. On gastown that path is on
+# /dev/md0 (the 2.3G DSM system root), NOT bind-mounted from /volume1 —
+# the earlier "upgrade-safe" comment was wrong. Config and lockfile stay
+# put because they're small; logs were moved to /volume1 below after the
+# 2026-05-12 incident where rsnapshot.log (506M) + rsnapshot-run.last.out
+# (343M) filled / to 100%.
 rsnapshot_config_path: /var/services/homes/nux/rsnapshot.conf
-rsnapshot_log_path: /var/services/homes/nux/rsnapshot.log
 rsnapshot_lockfile: /var/services/homes/nux/rsnapshot.pid
+
+# Excludes file. Tiny and read on every rsnapshot invocation, so stays on
+# the system fs next to the config rather than chasing it out to /volume1.
+# Currently scopes warrig's symlink-loop paths (/home/home/, /home/nux/home/)
+# that were blowing up native_cp_al rotation.
+rsnapshot_excludes_path: /var/services/homes/nux/rsnapshot.excludes
+
+# Log directory lives on /volume1, sibling to the snapshot tree. Owned by
+# nux so the wrapper (which runs as root under synoschedtask, but the
+# directory itself only needs to be writable by whoever ends up running
+# rsnapshot) can write here without DSM root-path pressure.
+rsnapshot_log_dir: /volume1/NetBackup/rsnapshot-logs
+rsnapshot_log_path: "{{ rsnapshot_log_dir }}/rsnapshot.log"
+rsnapshot_wrapper_out_path: "{{ rsnapshot_log_dir }}/rsnapshot-run.last.out"
 
 # Binaries. rsnapshot symlink survives the 1.5.1-5 install; ntfy is the
 # binwiederhier standalone v1.29.0 unpacked in nux's home.
@@ -41,7 +57,10 @@ rsnapshot_ssh_key: /var/services/homes/nux/.ssh/rsnapshot_key
 rsnapshot_ssh_args: "-i {{ rsnapshot_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
 
 # Notification settings. Single topic per Cam's 2026-05-12 decision —
-# differentiate by priority + tag, not by topic.
+# differentiate by priority + tag, not by topic. Real topic is set via
+# inventory/group_vars/synology/vault.yml — this default is a sentinel so
+# an unconfigured run fails loudly instead of silently posting to a public
+# ntfy.sh topic.
 rsnapshot_ntfy_topic: changeme_set_via_vault
 rsnapshot_ntfy_priority_start: min
 rsnapshot_ntfy_priority_ok: default

@@ -1,0 +1,6 @@
+---
+# Plaintext passthrough for secrets in vault.yml. Role defaults and templates
+# reference these names; the actual values live encrypted next door so grep
+# stays useful (search the codebase for `rsnapshot_ntfy_topic`, find the
+# definition, see it points at `vault_*` — then `ansible-vault view` to read).
+rsnapshot_ntfy_topic: "{{ vault_rsnapshot_ntfy_topic }}"

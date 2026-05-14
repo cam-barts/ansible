@@ -1,0 +1,44 @@
+- name: Stop kubelet
+  systemd:
+    name: kubelet
+    state: stopped
+    enabled: false
+  become: true
+  failed_when: false
+
+- name: Remove Kubernetes packages
+  apt:
+    name:
+      - kubeadm
+      - kubectl
+      - kubelet
+      - kubernetes-cni
+    state: absent
+    purge: true
+  become: true
+
+- name: Remove Kubernetes apt repo
+  file:
+    path: /etc/apt/sources.list.d/kubernetes.list
+    state: absent
+  become: true
+
+- name: Remove Kubernetes apt keyring
+  file:
+    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    state: absent
+  become: true
+
+- name: Remove Kubernetes config directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/kubernetes
+    - /var/lib/kubelet
+  become: true
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  become: true

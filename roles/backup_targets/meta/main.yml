@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: backup_targets
+  author: Cam Barts
+  description: >
+    Baseline package set for any host that gastown's rsnapshot pulls
+    from. Dispatches by package manager so the same role covers the
+    Hypriot Pi fleet (apt) and the Arch/EndeavourOS workstations
+    warrig + citadel (pacman).
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Debian
+      versions:
+        - any
+    - name: Archlinux
+      versions:
+        - any
+
+dependencies: []

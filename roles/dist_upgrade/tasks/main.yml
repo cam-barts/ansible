@@ -1,0 +1,49 @@
+---
+- name: Determine target release
+  set_fact:
+    target_release: "{{ release_map[ansible_distribution_release] | default('') }}"
+
+- name: Skip host if already at target or unknown release
+  meta: end_host
+  when: target_release == ''
+
+- name: Display upgrade path
+  debug:
+    msg: "Upgrading {{ inventory_hostname }} from {{ ansible_distribution_release }} to {{ target_release }}"
+
+- name: Backup current system state
+  import_tasks: backup.yml
+
+- name: Verify DNS resolution
+  command: host deb.debian.org
+  changed_when: false
+
+- name: Verify apt is not locked
+  shell: fuser /var/lib/dpkg/lock-frontend 2>/dev/null; true
+  register: dpkg_lock
+  changed_when: false
+  failed_when: dpkg_lock.stdout != ''
+
+- name: Update apt sources for target release
+  import_tasks: sources.yml
+
+- name: Perform distribution upgrade
+  import_tasks: upgrade.yml
+
+- name: Ensure networking survives reboot
+  import_tasks: networking.yml
+
+- name: Reboot after dist-upgrade
+  raw: sleep 2 && /sbin/reboot &
+  async: 1
+  poll: 0
+  ignore_errors: true
+
+- name: Wait for host to come back
+  wait_for_connection:
+    delay: 30
+    timeout: 300
+
+- name: Verify upgrade succeeded
+  raw: grep -q "{{ target_release }}" /etc/os-release
+  changed_when: false

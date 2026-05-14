@@ -1,0 +1,6 @@
+- name: Configure gastown rsnapshot backup-target hosts
+  hosts: backup_targets
+  gather_facts: true
+
+  roles:
+    - backup_targets

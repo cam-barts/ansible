@@ -1,0 +1,24 @@
+---
+- name: Backup current sources.list
+  copy:
+    src: /etc/apt/sources.list
+    dest: "/root/pre-upgrade-backup-{{ ansible_distribution_release }}/sources.list.bak"
+    remote_src: true
+    force: false
+
+- name: Deploy new sources.list for {{ target_release }}
+  template:
+    src: sources.list.j2
+    dest: /etc/apt/sources.list
+    backup: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Update sources.list.d entries to target codename
+  shell: |
+    find /etc/apt/sources.list.d/ -type f -name '*.list' \
+      -exec grep -lE 'buster|bullseye' {} \; \
+      | xargs -r sed -i -e 's/buster/{{ target_release }}/g' -e 's/bullseye/{{ target_release }}/g'
+  register: sources_d_update
+  changed_when: sources_d_update.stdout != ''

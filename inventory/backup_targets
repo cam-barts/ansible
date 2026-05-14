@@ -1,0 +1,27 @@
+# Hosts that gastown's rsnapshot pulls from. The two child groups split by
+# package manager so role/playbook code can branch on `ansible_os_family`
+# without re-deriving the topology.
+#
+# `[pis]` was previously defined in inventory/pis (alongside the now-removed
+# pi_common role). Folded in here when the backup-source set grew to
+# include warrig + citadel on 2026-05-13.
+
+[pis]
+wellerman      ansible_host=wellerman.shadeking.cam.local
+black-pearl    ansible_host=black-pearl.shadeking.cam.local
+billy-of-tea   ansible_host=billy-of-tea.shadeking.cam.local
+
+[pis:vars]
+ansible_user=pirate
+ansible_ssh_private_key_file=~/.ssh/rsnapshot_key
+
+[arch_backup_targets]
+warrig  ansible_host=warrig.shadeking.cam.local
+citadel ansible_host=citadel.shadeking.cam.local
+
+[arch_backup_targets:vars]
+ansible_user=nux
+
+[backup_targets:children]
+pis
+arch_backup_targets

@@ -1,0 +1,7 @@
+---
+release_map:
+  buster: bullseye
+  bullseye: bookworm
+
+debian_mirror: "http://raspbian.raspberrypi.org/raspbian"
+raspberrypi_mirror: "http://archive.raspberrypi.org/debian"

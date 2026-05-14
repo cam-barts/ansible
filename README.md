@@ -6,7 +6,7 @@ This document outlines the plan to build an Ansible repository integrated with m
 
 ### 1. Raspberry Pis
 
--   **Architecture:** ARMv7    
+-   **Architecture:** ARMv7
 -   **OS:** Hypriot, Raspbian OS
 -   Special considerations:
     -   Possibly exclude certain software like Obsidian due to hardware constraints
@@ -21,7 +21,7 @@ This document outlines the plan to build an Ansible repository integrated with m
 
 ### 3. HackTheBox PwnBox
 
--   **OS:** Parrot (Debian-based)    
+-   **OS:** Parrot (Debian-based)
 -   Used for practicing on HTB platform
 
 ### 4. Work Machines

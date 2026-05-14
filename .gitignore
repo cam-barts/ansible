@@ -1,0 +1,7 @@
+.claude/worktrees/
+
+# Ansible vault password — never commit. Use `vault_password_file` in
+# ansible.cfg to point at one of these locally.
+.vault_pass
+*.vault_pass
+.vault-password

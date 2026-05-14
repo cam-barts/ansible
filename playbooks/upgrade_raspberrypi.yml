@@ -1,0 +1,8 @@
+---
+- name: Upgrade Raspberry Pis to next Debian release
+  hosts: raspberrypis
+  gather_facts: true
+  serial: 1
+  become: true
+  roles:
+    - role: ../roles/dist_upgrade

@@ -15,6 +15,12 @@ ntfy="{{ rsnapshot_ntfy_bin }}"
 topic="{{ rsnapshot_ntfy_topic }}"
 rsnapshot="{{ rsnapshot_bin }}"
 
+# Capture wrapper stdout/stderr to a fixed file on /volume1. Overwrite-on-
+# start (single `>`) so the file stays bounded to a single run's worth of
+# output — the 2026-05-12 incident was a 343M unbounded growth on / when
+# this lived under nux's home on /dev/md0.
+exec >"{{ rsnapshot_wrapper_out_path }}" 2>&1
+
 "$ntfy" publish \
     -t "rsnapshot $interval started" \
     -p {{ rsnapshot_ntfy_priority_start }} \

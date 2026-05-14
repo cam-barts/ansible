@@ -1,0 +1,21 @@
+---
+# Run on every commit:  prek install   (or pre-commit install)
+# Run across full repo:  prek run --all-files
+#
+# Scope: secret prevention + basic file hygiene. ansible-lint is intentionally
+# NOT a commit gate — run it manually when doing a code-quality pass:
+#   ansible-lint --exclude .claude/ playbooks/ roles/
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        exclude: ^(roles/.+/templates/|.+\.j2$|inventory/group_vars/.+/vault\.yml$)
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

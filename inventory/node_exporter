@@ -1,0 +1,17 @@
+[raspberrypis]
+black-pearl  ansible_host=192.168.1.84
+wellerman    ansible_host=192.168.1.66
+billy-of-tea ansible_host=192.168.1.82
+
+[raspberrypis:vars]
+ansible_user=pirate
+
+[archlinux]
+citadel ansible_host=citadel.shadeking.cam.local
+
+[archlinux:vars]
+ansible_user=nux
+
+[node_exporter:children]
+raspberrypis
+archlinux
