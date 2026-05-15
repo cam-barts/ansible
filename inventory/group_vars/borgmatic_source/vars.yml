@@ -1,0 +1,10 @@
+---
+# Plaintext passthrough for secrets in vault.yml. Same pattern as
+# inventory/group_vars/synology/vars.yml — the actual value lives encrypted
+# next door so grep stays useful (search for `vault_borgmatic_passphrase`,
+# find this passthrough, then `ansible-vault view` vault.yml to read).
+#
+# vault.yml is intentionally not committed by the role bootstrap — Cam
+# creates it once with `ansible-vault create
+# inventory/group_vars/borgmatic_source/vault.yml` and sets:
+#   vault_borgmatic_passphrase: <strong passphrase>

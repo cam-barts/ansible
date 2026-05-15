@@ -1,0 +1,119 @@
+---
+# Borg repo target on gastown. Naming matches warrig's borg_backup_warrig
+# convention; gastown→citadel→borg path differentiates the source.
+borgmatic_repo_url: "ssh://nux@gastown.shadeking.cam.local/volume1/NetBackup/borg_backup_citadel"
+
+# Local borgmatic config path. Root-owned 0600 because encryption_passcommand
+# and DB connection details should not be world-readable.
+borgmatic_config_dir: /etc/borgmatic
+borgmatic_config_path: "{{ borgmatic_config_dir }}/config.yaml"
+
+# Passphrase. Lives in /etc/borgmatic/passphrase (root 0600), populated from
+# the ansible-vault var `vault_borgmatic_passphrase`. encryption_passcommand
+# cats it so the secret never lands in the rendered yaml. See README for
+# alternatives (secret-tool, Windmill-pulled).
+borgmatic_passphrase_file: "{{ borgmatic_config_dir }}/passphrase"
+borgmatic_encryption_passcommand: "cat {{ borgmatic_passphrase_file }}"
+
+# SSH key trust citadel→gastown. gastown→citadel was already established for
+# rsnapshot pulls; this is the new push direction. Per-cron-job key so the
+# regular nux@gastown ssh key doesn't double as the borg push identity.
+borgmatic_ssh_key_path: /root/.ssh/borg_gastown
+borgmatic_ssh_remote_user: nux
+borgmatic_ssh_remote_host: gastown.shadeking.cam.local
+
+# Init marker. Touched after `borgmatic init` (or after `borgmatic info`
+# confirms the repo already exists). Guards re-init on subsequent runs.
+borgmatic_state_dir: /var/lib/borgmatic
+borgmatic_init_marker: "{{ borgmatic_state_dir }}/.initialized"
+
+# Schedule. Daily 03:00 — offset from warrig's 04:00 so gastown isn't
+# servicing two concurrent borg pushes.
+borgmatic_cron_hour: 3
+borgmatic_cron_minute: 0
+borgmatic_cron_user: root
+
+# Sources. /etc and the docker_services tree are the load-bearing state.
+# ~/.config selectively included via excludes filter below.
+borgmatic_source_directories:
+  - /etc
+  - /home/nux/docker_services
+  - /home/nux/.config
+  - /var/backups/borgmatic-dumps  # populated by before_backup_command
+  - /etc/pkg-explicit.list        # populated by before_backup_command
+  - /etc/pkg-foreign.list         # populated by before_backup_command
+
+# Exclude patterns. Mirror warrig's pattern (caches, build artifacts, venvs)
+# plus citadel-specific: skip Garage object data + metadata (S3 has its own
+# replication; config-only is the value), skip windmill worker tmp scratch.
+# NOTE: warrig's live exclude list is in root-only /etc/borgmatic/config.yaml.
+# Reconcile against `sudo cat /etc/borgmatic/config.yaml` on warrig during
+# review and PR-update if there are warrig-specific entries not captured here.
+borgmatic_excludes:
+  - "*/.cache/*"
+  - "*/node_modules/*"
+  - "*/__pycache__/*"
+  - "*/.venv/*"
+  - "*/venv/*"
+  - "*/.npm/*"
+  - "*/.local/share/Trash/*"
+  - "*/tmp/*"
+  - "*/.tmp/*"
+  # Garage object data + metadata — S3 has internal replication, config is
+  # what's worth backing up. Container compose dir itself stays included.
+  - "/home/nux/docker_services/garage/data/*"
+  - "/home/nux/docker_services/garage/meta/*"
+  # Loki / Prometheus / Grafana on-disk TSDB chunks — large, derivable from
+  # configured scrape targets; backing up config dirs is enough.
+  - "/home/nux/docker_services/monitoring/data/loki/*"
+  - "/home/nux/docker_services/monitoring/data/prometheus/*"
+  - "/home/nux/docker_services/monitoring/data/grafana/grafana.db-journal"
+  # changedetection screenshot snapshots — regenerable
+  - "/home/nux/docker_services/changedetection/datastore/Browserless/*"
+
+# Compression — matches warrig.
+borgmatic_compression: "zstd,10"
+
+# Retention — matches warrig.
+borgmatic_keep_daily: 7
+borgmatic_keep_weekly: 4
+borgmatic_keep_monthly: 6
+borgmatic_keep_yearly: 1
+
+# Consistency checks — matches warrig.
+borgmatic_consistency_checks:
+  - { name: data, frequency: "2 weeks" }
+  - { name: extract, frequency: "1 month" }
+
+# ntfy. Single topic [redacted-vaulted-topic]. Named priorities (default/urgent) per
+# Cam's strategy-doc refactor note — no numeric -p N here.
+borgmatic_ntfy_bin: /usr/bin/ntfy
+borgmatic_ntfy_topic: [redacted-vaulted-topic]
+borgmatic_ntfy_priority_start: min
+borgmatic_ntfy_priority_ok: default
+borgmatic_ntfy_priority_fail: urgent
+
+# DB dump staging dir. before_backup_command writes here; after_backup_command
+# wipes it. 0700 root so dumps aren't world-readable while staged.
+borgmatic_dump_dir: /var/backups/borgmatic-dumps
+
+# Databases to dump. Maps container name → command. before_backup_command
+# iterates this list. Set to [] to skip DB dumping entirely.
+borgmatic_databases:
+  - name: windmill-postgres
+    container: windmill-db-1
+    type: postgres
+    dump_cmd: "docker exec windmill-db-1 pg_dumpall -U postgres"
+    dump_file: "windmill-postgres-all.sql"
+  - name: bunkerweb-mariadb
+    container: bunkerweb-bw-db-1
+    type: mariadb
+    # MARIADB_ROOT_PASSWORD is in the container env (compose-injected).
+    dump_cmd: "docker exec bunkerweb-bw-db-1 sh -c 'exec mariadb-dump -uroot -p\"$MARIADB_ROOT_PASSWORD\" --all-databases --single-transaction --quick'"
+    dump_file: "bunkerweb-mariadb-all.sql"
+  # No mongodb instance found on citadel as of 2026-05-13 survey. Add a
+  # block here if/when mongo lands.
+# Path to borg on the REMOTE (gastown) side. gastown's nux shell doesn't have
+# /usr/local/bin on its non-interactive PATH, so borg needs to be invoked by
+# absolute path. SynoCommunity borgbackup package symlinks borg here.
+borgmatic_remote_path: /usr/local/bin/borg

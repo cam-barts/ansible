@@ -1,0 +1,74 @@
+# {{ ansible_managed }}
+# borgmatic config for citadel → gastown push. Rendered by Ansible role
+# borgmatic_citadel. Edit the role defaults/host_vars, not this file directly
+# — next playbook run will clobber hand edits.
+#
+# Both the repo init and the daily run are driven by the role; this comment
+# block is kept for hand-debugging only:
+#   sudo borgmatic --config /etc/borgmatic/config.yaml init --encryption repokey-blake2
+#   sudo /usr/local/bin/borgmatic-run.sh
+
+source_directories:
+{% for d in borgmatic_source_directories %}
+    - {{ d | tojson }}
+{% endfor %}
+
+repositories:
+    - path: {{ borgmatic_repo_url | tojson }}
+      label: citadel
+
+# Encryption passphrase. Pulled from {{ borgmatic_passphrase_file }} at run
+# time so the passphrase is not embedded in this config or version control.
+# The file itself is populated by Ansible from the ansible-vault var
+# `vault_borgmatic_passphrase`.
+# Path to borg on the remote (gastown) side. Gastown's nux shell doesn't have
+# /usr/local/bin on its non-interactive PATH so borg needs an explicit path.
+remote_path: {{ borgmatic_remote_path | tojson }}
+
+encryption_passcommand: {{ borgmatic_encryption_passcommand | tojson }}
+
+exclude_patterns:
+{% for p in borgmatic_excludes %}
+    - {{ p | tojson }}
+{% endfor %}
+
+exclude_caches: true
+exclude_if_present:
+    - .nobackup
+    - CACHEDIR.TAG
+one_file_system: false
+
+compression: {{ borgmatic_compression }}
+
+# Retention.
+keep_daily: {{ borgmatic_keep_daily }}
+keep_weekly: {{ borgmatic_keep_weekly }}
+keep_monthly: {{ borgmatic_keep_monthly }}
+keep_yearly: {{ borgmatic_keep_yearly }}
+
+# Consistency checks. data = block-level integrity, extract = full-restore
+# rehearsal. Cadence matches warrig.
+checks:
+{% for c in borgmatic_consistency_checks %}
+    - name: {{ c.name }}
+      frequency: {{ c.frequency }}
+{% endfor %}
+
+# DB dumps. Borgmatic's native postgresql_databases/mariadb_databases hooks
+# would need pg_dumpall / mariadb-dump installed on the host and direct
+# network access into the containers. Citadel runs the DBs inside docker
+# without those binaries on the host, so dumps are staged by
+# before_backup_command via `docker exec` into the running containers, then
+# the staging dir ({{ borgmatic_dump_dir }}) is captured as a regular source
+# directory. after_backup_command wipes the staging dir on success.
+before_backup:
+    - /usr/local/bin/borgmatic-dump-dbs.sh
+    - /usr/local/bin/borgmatic-export-pkglists.sh
+
+after_backup:
+    - /usr/local/bin/borgmatic-cleanup-dumps.sh
+
+# ntfy hooks. Named priorities, single [redacted-vaulted-topic] topic, distinct
+# titles from warrig's so the two streams are visually separable.
+on_error:
+    - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see /var/log/borgmatic.log'"

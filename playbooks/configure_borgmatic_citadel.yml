@@ -1,0 +1,26 @@
+---
+# Two-play sequence:
+#   1. citadel — install borgmatic, render config + scripts, generate
+#      citadel→gastown SSH key, write vault passphrase, init the borg repo.
+#   2. gastown — install the citadel pubkey into nux's authorized_keys so
+#      the daily cron push from citadel can land.
+#
+# The pubkey is registered as a fact on citadel (set_fact at end of role
+# tasks), then read via hostvars in the gastown play.
+
+- name: Configure borgmatic on citadel for daily push to gastown
+  hosts: citadel
+  gather_facts: true
+  roles:
+    - borgmatic_citadel
+
+- name: Authorize citadel's borgmatic key on gastown
+  hosts: gastown
+  gather_facts: false
+  tasks:
+    - name: Install citadel→gastown pubkey for nux on gastown
+      ansible.posix.authorized_key:
+        user: "{{ hostvars['citadel'].borgmatic_ssh_remote_user | default('nux') }}"
+        key: "{{ hostvars['citadel'].borgmatic_ssh_public_key }}"
+        state: present
+        comment: "borgmatic citadel→gastown"

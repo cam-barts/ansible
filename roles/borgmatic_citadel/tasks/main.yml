@@ -1,0 +1,224 @@
+---
+# borgmatic on citadel — daily 03:00 push to gastown over SSH.
+#
+# Idempotency notes:
+#   * Package install is `state: present`, won't churn on existing 2.x.
+#   * SSH key generation guarded by `creates:` so re-runs no-op once the key
+#     file is on disk.
+#   * SSH config is rendered via blockinfile with a unique marker so re-runs
+#     converge rather than appending duplicates.
+#   * Config render uses `validate: borgmatic config validate -c %s` so a
+#     malformed template never reaches disk.
+#   * `borgmatic init` is gated by a marker file AND a pre-check using
+#     `borgmatic info` so re-runs don't re-encrypt an existing repo.
+#   * Cron entry is `cron:` module with a unique name, so re-runs just
+#     converge rather than appending duplicates.
+
+- name: Install borgmatic
+  ansible.builtin.package:
+    name: borgmatic
+    state: present
+
+- name: Ensure borg is present (borgmatic depends on it, but be explicit)
+  ansible.builtin.package:
+    name: borg
+    state: present
+
+- name: Ensure borgmatic config directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure borgmatic state directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure DB dump staging directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_dump_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# --- passphrase from ansible-vault -------------------------------------------
+# vault_borgmatic_passphrase is expected to come from
+# inventory/group_vars/borgmatic_source/vault.yml (ansible-vault encrypted).
+# See README for the one-time `ansible-vault create` bootstrap step.
+- name: Assert ansible-vault passphrase variable is defined
+  ansible.builtin.assert:
+    that:
+      - vault_borgmatic_passphrase is defined
+      - vault_borgmatic_passphrase | length > 0
+    fail_msg: >-
+      vault_borgmatic_passphrase is not defined. Populate it via
+      `ansible-vault create inventory/group_vars/borgmatic_source/vault.yml` and add
+      `vault_borgmatic_passphrase: <strong passphrase>`. The passphrase
+      protects the borg repo on gastown — losing it makes archives
+      unrecoverable, so stash a copy in KeePassXC at the same time.
+
+- name: Write passphrase file from ansible-vault
+  ansible.builtin.copy:
+    content: "{{ vault_borgmatic_passphrase }}\n"
+    dest: "{{ borgmatic_passphrase_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+# --- SSH key trust citadel→gastown ------------------------------------------
+- name: Ensure /root/.ssh exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate citadel→gastown SSH keypair (ed25519)
+  ansible.builtin.command:
+    cmd: "ssh-keygen -t ed25519 -f {{ borgmatic_ssh_key_path }} -N '' -C 'borgmatic citadel→gastown'"
+    creates: "{{ borgmatic_ssh_key_path }}"
+  # Run in check mode too so subsequent file/perm tasks have a real file to
+  # reference; the `creates:` guard keeps it idempotent.
+  check_mode: false
+
+- name: Ensure private key is root-only
+  ansible.builtin.file:
+    path: "{{ borgmatic_ssh_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Slurp citadel→gastown SSH public key
+  ansible.builtin.slurp:
+    src: "{{ borgmatic_ssh_key_path }}.pub"
+  register: borgmatic_ssh_pub_slurp
+
+- name: Stash pubkey as a fact for the gastown play
+  ansible.builtin.set_fact:
+    borgmatic_ssh_public_key: "{{ borgmatic_ssh_pub_slurp.content | b64decode | trim }}"
+
+- name: Render /root/.ssh/config entry for gastown
+  ansible.builtin.blockinfile:
+    path: /root/.ssh/config
+    create: true
+    owner: root
+    group: root
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED: borgmatic_citadel"
+    block: |
+      Host {{ borgmatic_ssh_remote_host }}
+          User {{ borgmatic_ssh_remote_user }}
+          IdentityFile {{ borgmatic_ssh_key_path }}
+          IdentitiesOnly yes
+
+- name: Seed known_hosts for gastown (accept-new on first contact)
+  ansible.builtin.command:
+    cmd: >-
+      ssh -o BatchMode=yes
+          -o StrictHostKeyChecking=accept-new
+          -i {{ borgmatic_ssh_key_path }}
+          {{ borgmatic_ssh_remote_user }}@{{ borgmatic_ssh_remote_host }}
+          true
+  register: borgmatic_ssh_seed
+  failed_when: false
+  changed_when: false
+
+# --- config + scripts -------------------------------------------------------
+- name: Back up the previous borgmatic config once
+  ansible.builtin.copy:
+    src: "{{ borgmatic_config_path }}"
+    dest: "{{ borgmatic_config_path }}.pre-ansible.bak"
+    remote_src: true
+    force: false
+  failed_when: false
+
+- name: Render borgmatic config
+  ansible.builtin.template:
+    src: borgmatic_config.yaml.j2
+    dest: "{{ borgmatic_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "/usr/bin/borgmatic config validate -c %s"
+
+- name: Install borgmatic-dump-dbs.sh
+  ansible.builtin.template:
+    src: borgmatic-dump-dbs.sh.j2
+    dest: /usr/local/bin/borgmatic-dump-dbs.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install borgmatic-cleanup-dumps.sh
+  ansible.builtin.template:
+    src: borgmatic-cleanup-dumps.sh.j2
+    dest: /usr/local/bin/borgmatic-cleanup-dumps.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install borgmatic-export-pkglists.sh
+  ansible.builtin.template:
+    src: borgmatic-export-pkglists.sh.j2
+    dest: /usr/local/bin/borgmatic-export-pkglists.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install borgmatic-run.sh wrapper
+  ansible.builtin.template:
+    src: borgmatic-run.sh.j2
+    dest: /usr/local/bin/borgmatic-run.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+# --- repo init --------------------------------------------------------------
+# Belt-and-suspenders: marker file guards the common case; even without it,
+# `borgmatic info` probes the remote first so we never double-init an
+# already-encrypted repo (which would fail anyway, but with a cryptic error).
+- name: Check whether the borg repo already exists on gastown
+  ansible.builtin.command:
+    cmd: "/usr/bin/borgmatic --config {{ borgmatic_config_path }} info"
+  register: borgmatic_repo_probe
+  failed_when: false
+  changed_when: false
+  when: not (ansible_check_mode | default(false))
+
+- name: Initialize the borg repo on gastown (first run only)
+  ansible.builtin.command:
+    cmd: "/usr/bin/borgmatic --config {{ borgmatic_config_path }} init --encryption repokey-blake2"
+  args:
+    creates: "{{ borgmatic_init_marker }}"
+  when:
+    - not (ansible_check_mode | default(false))
+    - borgmatic_repo_probe.rc | default(1) != 0
+
+- name: Touch borgmatic init marker
+  ansible.builtin.file:
+    path: "{{ borgmatic_init_marker }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+  when: not (ansible_check_mode | default(false))
+
+# --- cron -------------------------------------------------------------------
+- name: Schedule daily borgmatic run via cron
+  ansible.builtin.cron:
+    name: "borgmatic citadel→gastown daily"
+    user: "{{ borgmatic_cron_user }}"
+    hour: "{{ borgmatic_cron_hour }}"
+    minute: "{{ borgmatic_cron_minute }}"
+    job: "/usr/local/bin/borgmatic-run.sh >> /var/log/borgmatic.log 2>&1"

@@ -1,0 +1,27 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Staged DB dump runner invoked by borgmatic's before_backup hook.
+#
+# Each dump is written to {{ borgmatic_dump_dir }}/<file>. If a single dump
+# fails the whole script exits non-zero so borgmatic aborts the backup
+# (preferable to silently shipping yesterday's stale dump or a missing one).
+
+set -eu
+
+dumpdir="{{ borgmatic_dump_dir }}"
+mkdir -p "$dumpdir"
+chmod 700 "$dumpdir"
+
+{% for db in borgmatic_databases %}
+# {{ db.name }} ({{ db.type }}, container {{ db.container }})
+out="$dumpdir/{{ db.dump_file }}"
+tmp="$out.partial"
+if ! {{ db.dump_cmd }} >"$tmp" 2>/tmp/borgmatic-dump-{{ db.name }}.err; then
+    echo "borgmatic-dump-dbs: {{ db.name }} dump failed" >&2
+    cat /tmp/borgmatic-dump-{{ db.name }}.err >&2
+    exit 1
+fi
+mv "$tmp" "$out"
+chmod 600 "$out"
+
+{% endfor %}

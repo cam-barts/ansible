@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: borgmatic_citadel
+  author: Cam Barts
+  description: >
+    Configures borgmatic on citadel for a daily push to the gastown Synology.
+    Mirrors warrig's borgmatic shape (zstd,10, 7/4/6/1 retention, data+extract
+    consistency cadence, ntfy [redacted-vaulted-topic] topic) but offset to 03:00 and
+    with citadel-specific docker_services source set, Garage data exclusion,
+    and before_backup_command DB dumps from the windmill (postgres) and
+    bunkerweb (mariadb) containers.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - any
+    - name: EndeavourOS
+      versions:
+        - any
+
+dependencies: []

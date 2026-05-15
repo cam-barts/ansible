@@ -1,0 +1,12 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# after_backup hook — wipes the staged DB dump dir once borgmatic has
+# captured it into the archive. Quiet on missing dir / empty dir.
+
+set -u
+
+dumpdir="{{ borgmatic_dump_dir }}"
+if [ -d "$dumpdir" ]; then
+    rm -f "$dumpdir"/*.sql "$dumpdir"/*.sql.partial 2>/dev/null || true
+fi
+exit 0

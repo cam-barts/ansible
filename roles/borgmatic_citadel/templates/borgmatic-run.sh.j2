@@ -1,0 +1,39 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# borgmatic-run.sh — wrapper for the daily borgmatic invocation.
+#
+# Same explicit start/ok/fail pattern as rsnapshot-run.sh on gastown:
+# success and failure go through different ntfy paths so a partial pipe
+# never fires the "ok" message on a real failure.
+
+set -u
+
+ntfy="{{ borgmatic_ntfy_bin }}"
+topic="{{ borgmatic_ntfy_topic }}"
+config="{{ borgmatic_config_path }}"
+
+"$ntfy" publish \
+    -t "Borg Backup Started (Citadel)" \
+    -p {{ borgmatic_ntfy_priority_start }} \
+    --tags=backup,citadel,floppy_disk \
+    "$topic" \
+    "citadel→gastown borg push started" >/dev/null 2>&1 || true
+
+if /usr/bin/borgmatic --config "$config"; then
+    "$ntfy" publish \
+        -t "Borg Backup OK (Citadel)" \
+        -p {{ borgmatic_ntfy_priority_ok }} \
+        --tags=backup,citadel,white_check_mark \
+        "$topic" \
+        "citadel→gastown borg push completed cleanly" >/dev/null 2>&1 || true
+    exit 0
+else
+    rc=$?
+    "$ntfy" publish \
+        -t "Borg Backup FAILED (Citadel)" \
+        -p {{ borgmatic_ntfy_priority_fail }} \
+        --tags=backup,citadel,warning \
+        "$topic" \
+        "citadel→gastown borg push exited $rc — see /var/log/borgmatic.log" >/dev/null 2>&1 || true
+    exit "$rc"
+fi
