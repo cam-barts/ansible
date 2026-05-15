@@ -37,7 +37,7 @@ borgmatic_cron_user: root
 # ~/.config selectively included via excludes filter below.
 borgmatic_source_directories:
   - /etc
-  - /home/nux/docker_services
+  - /home/nux/docker
   - /home/nux/.config
   - /var/backups/borgmatic-dumps  # populated by before_backup_command
   - /etc/pkg-explicit.list        # populated by before_backup_command
@@ -61,15 +61,15 @@ borgmatic_excludes:
   - "*/.tmp/*"
   # Garage object data + metadata — S3 has internal replication, config is
   # what's worth backing up. Container compose dir itself stays included.
-  - "/home/nux/docker_services/garage/data/*"
-  - "/home/nux/docker_services/garage/meta/*"
+  - "/home/nux/docker/garage/data/*"
+  - "/home/nux/docker/garage/meta/*"
   # Loki / Prometheus / Grafana on-disk TSDB chunks — large, derivable from
   # configured scrape targets; backing up config dirs is enough.
-  - "/home/nux/docker_services/monitoring/data/loki/*"
-  - "/home/nux/docker_services/monitoring/data/prometheus/*"
-  - "/home/nux/docker_services/monitoring/data/grafana/grafana.db-journal"
+  - "/home/nux/docker/monitoring/data/loki/*"
+  - "/home/nux/docker/monitoring/data/prometheus/*"
+  - "/home/nux/docker/monitoring/data/grafana/grafana.db-journal"
   # changedetection screenshot snapshots — regenerable
-  - "/home/nux/docker_services/changedetection/datastore/Browserless/*"
+  - "/home/nux/docker/changedetection/datastore/Browserless/*"
 
 # Compression — matches warrig.
 borgmatic_compression: "zstd,10"

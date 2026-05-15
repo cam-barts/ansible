@@ -20,3 +20,51 @@
     owner: root
     group: root
     mode: "0644"
+# Per-user copies for ntfy CLI builds that only honor ~/.config/ntfy/client.yml.
+# Root is always included (the borgmatic-run.sh wrapper + cron jobs invoke
+# ntfy as root). Additional users (nux for interactive use, etc.) come from
+# the `ntfy_client_user_homes` var.
+
+- name: Ensure /root/.config/ntfy directory exists
+  ansible.builtin.file:
+    path: /root/.config/ntfy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render ntfy client config in /root/.config (for cron/root invocations)
+  ansible.builtin.template:
+    src: client.yml.j2
+    dest: /root/.config/ntfy/client.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Get pw entry for additional users
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ item }}"
+  loop: "{{ ntfy_client_user_homes }}"
+  when: ntfy_client_user_homes | length > 0
+  register: ntfy_client_pw_entries
+
+- name: Ensure per-user .config/ntfy directories exist
+  ansible.builtin.file:
+    path: "{{ getent_passwd[item][4] }}/.config/ntfy"
+    state: directory
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    mode: "0755"
+  loop: "{{ ntfy_client_user_homes }}"
+  when: ntfy_client_user_homes | length > 0
+
+- name: Render ntfy client config in each additional user's home
+  ansible.builtin.template:
+    src: client.yml.j2
+    dest: "{{ getent_passwd[item][4] }}/.config/ntfy/client.yml"
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    mode: "0644"
+  loop: "{{ ntfy_client_user_homes }}"
+  when: ntfy_client_user_homes | length > 0
