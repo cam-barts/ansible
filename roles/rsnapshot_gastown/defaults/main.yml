@@ -96,3 +96,6 @@ rsnapshot_synoschedtask_ids:
   - { id: 5, interval: daily }
   - { id: 6, interval: weekly }
   - { id: 7, interval: monthly }
+
+# Force rsync --link-dest fallback for rotation. See template comment for why.
+rsnapshot_link_dest: 1

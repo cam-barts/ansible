@@ -32,6 +32,12 @@ snapshot_root	{{ rsnapshot_snapshot_root }}
 
 cmd_rm		/bin/rm
 cmd_rsync	/bin/rsync
+# Force rsync's --link-dest fallback for rotation. SynoCommunity rsnapshot's
+# native_cp_al is silently broken on gastown — without this the rotation
+# step byte-copies every file instead of hardlinking, blowing up the
+# snapshot tree. With link_dest=1, rsnapshot passes --link-dest=../$prev/
+# to rsync and dedup is restored.
+link_dest	{{ rsnapshot_link_dest }}
 cmd_ssh		/usr/bin/ssh
 cmd_logger	/usr/bin/logger
 cmd_du		/bin/du
