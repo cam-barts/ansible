@@ -1,0 +1,22 @@
+---
+# ntfy_client — system-wide ntfy CLI config pointing at Cam's self-hosted
+# server. Lightweight: just ensures /etc/ntfy/client.yml exists with the
+# right default-host. Does NOT install the ntfy CLI itself — each host's
+# install is platform-specific (pacman on Arch, manual binary on Synology,
+# etc.) and is best handled wherever that host's other packages are managed.
+
+- name: Ensure /etc/ntfy directory exists
+  ansible.builtin.file:
+    path: /etc/ntfy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template ntfy client config to point at the self-hosted server
+  ansible.builtin.template:
+    src: client.yml.j2
+    dest: /etc/ntfy/client.yml
+    owner: root
+    group: root
+    mode: "0644"

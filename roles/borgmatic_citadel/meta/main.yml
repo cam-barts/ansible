@@ -19,4 +19,5 @@ galaxy_info:
       versions:
         - any
 
-dependencies: []
+dependencies:
+  - role: ntfy_client

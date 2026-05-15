@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# ntfy CLI default-host. Without this, the CLI silently defaults to
+# https://ntfy.sh (public). This file is managed by the ntfy_client role.
+default-host: {{ ntfy_client_default_host }}
+{% if ntfy_client_default_user is defined and ntfy_client_default_user %}
+default-user: {{ ntfy_client_default_user }}
+default-password: {{ ntfy_client_default_password }}
+{% endif %}
+{% if ntfy_client_default_token is defined and ntfy_client_default_token %}
+default-token: {{ ntfy_client_default_token }}
+{% endif %}

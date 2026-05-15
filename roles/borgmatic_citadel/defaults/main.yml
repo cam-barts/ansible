@@ -109,7 +109,7 @@ borgmatic_databases:
     container: bunkerweb-bw-db-1
     type: mariadb
     # MARIADB_ROOT_PASSWORD is in the container env (compose-injected).
-    dump_cmd: "docker exec bunkerweb-bw-db-1 sh -c 'exec mariadb-dump -uroot -p\"$MARIADB_ROOT_PASSWORD\" --all-databases --single-transaction --quick'"
+    dump_cmd: "docker exec bunkerweb-bw-db-1 sh -c 'exec mariadb-dump -ubunkerweb -p\"$MYSQL_PASSWORD\" --single-transaction --quick db'"
     dump_file: "bunkerweb-mariadb-all.sql"
   # No mongodb instance found on citadel as of 2026-05-13 survey. Add a
   # block here if/when mongo lands.

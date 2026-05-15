@@ -1,0 +1,11 @@
+---
+# Apply ntfy_client config to every host that has the ntfy CLI installed
+# or might in the future. Idempotent — safe to re-run.
+#
+# Hosts without ntfy installed get a harmless config file at /etc/ntfy/
+# that will start being honored as soon as ntfy is installed there.
+- name: Configure ntfy client default-host on all hosts
+  hosts: all
+  gather_facts: false
+  roles:
+    - ntfy_client

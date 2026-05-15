@@ -1,0 +1,13 @@
+---
+# ntfy CLI default-host. The bare `ntfy` CLI without config silently
+# defaults to https://ntfy.sh (the public service), which means any host
+# missing config leaks notifications onto the public topic of the same
+# name. This role's job is to make sure every host with ntfy points at
+# Cam's self-hosted server.
+ntfy_client_default_host: https://ntfy.coder.cam
+
+# Optional auth — leave undefined if the host's posting topics don't
+# require credentials. Set per-group or per-host in group_vars if needed.
+# ntfy_client_default_user: ""
+# ntfy_client_default_password: ""
+# ntfy_client_default_token: ""
