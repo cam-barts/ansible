@@ -5,15 +5,17 @@
 #
 # Replaces the legacy "cmd1 && cmd2 || cmd3" chain whose || branch fired the
 # "Completed" message on FAILURE — that bug hid the April 13 break for a
-# month. Logic is now an explicit if/then/else so success ≠ failure ≠ start.
+# month. Logic is now explicit if/elif/else so success / warnings / failure
+# are routed separately and you only get paged for real failures.
 
 set -u
 
 interval="${1:-hourly}"
+
 config="{{ rsnapshot_config_path }}"
+rsnapshot="{{ rsnapshot_bin }}"
 ntfy="{{ rsnapshot_ntfy_bin }}"
 topic="{{ rsnapshot_ntfy_topic }}"
-rsnapshot="{{ rsnapshot_bin }}"
 
 # Capture wrapper stdout/stderr to a fixed file on /volume1. Overwrite-on-
 # start (single `>`) so the file stays bounded to a single run's worth of
@@ -28,7 +30,10 @@ exec >"{{ rsnapshot_wrapper_out_path }}" 2>&1
     "$topic" \
     "rsnapshot $interval started on gastown" >/dev/null 2>&1 || true
 
-if "$rsnapshot" -c "$config" "$interval"; then
+"$rsnapshot" -c "$config" "$interval"
+rc=$?
+
+if [ "$rc" -eq 0 ]; then
     "$ntfy" publish \
         -t "rsnapshot $interval ok" \
         -p {{ rsnapshot_ntfy_priority_ok }} \
@@ -36,8 +41,19 @@ if "$rsnapshot" -c "$config" "$interval"; then
         "$topic" \
         "rsnapshot $interval completed cleanly on gastown" >/dev/null 2>&1 || true
     exit 0
+elif [ "$rc" -eq 2 ]; then
+    # rsnapshot exit 2 = "completed with warnings" (typically rsync partial
+    # transfers from permission-denied on locked DB / cert files). The
+    # backup itself landed; we want awareness, not a page. Exit 0 so
+    # synoschedtask records it as success.
+    "$ntfy" publish \
+        -t "rsnapshot $interval completed with warnings" \
+        -p {{ rsnapshot_ntfy_priority_warn }} \
+        --tags=backup,information_source \
+        "$topic" \
+        "rsnapshot $interval completed but some files weren't transferred (perms, locked DBs, etc.) — see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
+    exit 0
 else
-    rc=$?
     "$ntfy" publish \
         -t "rsnapshot $interval FAILED" \
         -p {{ rsnapshot_ntfy_priority_fail }} \

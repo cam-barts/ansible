@@ -13,3 +13,11 @@
 **/grav/config/log/
 **/*.sqlite3-shm
 **/*.sqlite3-wal
+# More DB / cert / cache patterns discovered in the 2026-05-14 21:18 run:
+# MongoDB data, semaphore postgres, Let's Encrypt account credentials,
+# Arch AUR build cache (root-owned mid-build), and ruff's lint cache.
+**/mongodb/
+**/semaphore-postgres/
+**/letsencrypt/accounts/
+**/.cache/paru/
+**/.ruff_cache/

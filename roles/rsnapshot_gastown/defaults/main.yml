@@ -64,6 +64,7 @@ rsnapshot_ssh_args: "-i {{ rsnapshot_ssh_key }} -o BatchMode=yes -o StrictHostKe
 rsnapshot_ntfy_topic: changeme_set_via_vault
 rsnapshot_ntfy_priority_start: min
 rsnapshot_ntfy_priority_ok: default
+rsnapshot_ntfy_priority_warn: low
 rsnapshot_ntfy_priority_fail: high
 
 # Sources. gastown pulls from each over SSH using rsnapshot_ssh_key.
