@@ -25,12 +25,17 @@ warrig's 04:00 so gastown isn't servicing two concurrent receivers).
    `/var/lib/borgmatic/.initialized` guards the second run.
 7. Installs four scripts under `/usr/local/bin/`:
    - `borgmatic-run.sh` — cron entry-point with explicit start/ok/fail ntfy chain.
-   - `borgmatic-dump-dbs.sh` — `before_backup` hook; `docker exec` pg_dumpall
-     + mariadb-dump into `/var/backups/borgmatic-dumps/`.
-   - `borgmatic-cleanup-dumps.sh` — `after_backup` hook; wipes the dump dir.
-   - `borgmatic-export-pkglists.sh` — `before_backup` hook; refreshes
-     `/etc/pkg-explicit.list` and `/etc/pkg-foreign.list` so a restore can
-     replay pacman state.
+   - `borgmatic-dump-dbs.sh` — `before: action` hook; `docker exec` pg_dumpall
+     + mariadb-dump into `/var/backups/borgmatic-dumps/`. Serialised with
+     `flock` on the dump dir, `umask 077`, split inner/outer `timeout`, and a
+     terminator check so a truncated dump is never promoted. Always exits 0.
+   - `borgmatic-cleanup-dumps.sh` — `after: action` hook; wipes the dump dir on
+     both success and failure, and asserts each DB left either a dump or a
+     `DUMP-FAILED-<name>.txt` marker (catches a dump script that never ran).
+   - `borgmatic-export-system-state.sh` — `before: action` hook; captures pacman
+     state, pacman/mirror config, fstab, enabled units and host identity into
+     `~/.system-state` so a restore can replay the host. Supersedes the older
+     `borgmatic-export-pkglists.sh`, which the role removes.
 8. Installs a root cron entry: daily 03:00 → `borgmatic-run.sh`, logging to
    `/var/log/borgmatic.log`.
 
@@ -52,12 +57,20 @@ borgmatic_source_directories:  # what to capture
 
 borgmatic_databases:  # what to dump via docker exec
   - name: windmill-postgres
-    container: windmill-db-1
-    dump_cmd: "docker exec windmill-db-1 pg_dumpall -U postgres"
     dump_file: "windmill-postgres-all.sql"
+    terminator: "PostgreSQL database cluster dump complete"
+    dump_invocation: |-
+      timeout "$outer_timeout" docker exec windmill-db-1 \
+          timeout "$inner_timeout" pg_dumpall -U postgres
   - name: bunkerweb-mariadb
     ...
 ```
+
+`dump_invocation` is rendered verbatim as the argv handed to the script's
+`dump()` helper and references `$outer_timeout` / `$inner_timeout`, which come
+from `borgmatic_dump_timeout_outer` (wraps `docker`, backstop for a wedged CLI)
+and `borgmatic_dump_timeout_inner` (runs inside the container, actually bounds
+the dump). Outer must stay larger than inner.
 
 Excluded by default: caches, node_modules, venvs, Garage object/meta data
 (S3 has internal replication — config is what's worth backing up), Loki +

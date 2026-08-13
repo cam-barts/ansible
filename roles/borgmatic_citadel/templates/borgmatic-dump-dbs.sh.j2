@@ -1,28 +1,50 @@
 #!/bin/sh
 # {{ ansible_managed }}
-# Staged DB dump runner invoked by borgmatic's before-create command hook.
+# Staged DB dump runner, invoked by borgmatic's before-create command hook.
 #
 # Resilience contract (2026-08-12 hardening):
-#   * The filesystem backup is the load-bearing tier: this script ALWAYS
-#     exits 0 so a dump failure never aborts borgmatic.
-#   * Each dump gets {{ borgmatic_dump_attempts }} attempts ({{ borgmatic_dump_retry_delay }}s apart) to ride out
-#     transient races (e.g. BunkerWeb's ephemeral test_<uuid> tables) and
-#     brief restarts.
-#   * A persistently failed dump sends its own ntfy alert (stderr kept so
-#     a broken ntfy is visible in /var/log/borgmatic.log) and drops a
-#     DUMP-FAILED-<name>.txt marker into the staging dir so the night's
-#     archive self-documents the missing dump.
-#   * Each attempt is capped by timeout(1) so a wedged docker/db can't
-#     hang the hook (and with it the whole backup) forever.
+#   * The filesystem archive is the load-bearing tier. This script ALWAYS
+#     exits 0, and the config appends "|| true" as a second belt so even a
+#     missing/non-executable script can't abort borgmatic.
+#     COROLLARY: because "|| true" also swallows a script that never ran,
+#     borgmatic-cleanup-dumps.sh asserts that each DB left behind either a
+#     dump or a failure marker. Keep the DB name list there in sync with the
+#     dump calls below.
+#   * The test_<uuid> race (BunkerWeb creates/drops ephemeral tables while
+#     mariadb-dump walks the table list — the Jun 25 / Jul 12 misfires) is
+#     closed STRUCTURALLY: mariadb-dump is handed an explicit table list with
+#     test_<32hex> names filtered out, so a test table appearing mid-dump is
+#     never referenced. The retry below is therefore NOT for that race; it is
+#     for brief container blips, which is why the delay is {{ borgmatic_dump_retry_delay }}s rather than a
+#     few seconds.
+#   * timeout(1) runs INSIDE the container. A host-side timeout only kills the
+#     docker CLI and leaves the dump running server-side, so a retry would
+#     stack a second dump on the first. The outer timeout is a backstop
+#     against a wedged docker CLI and MUST stay larger than the inner one.
+#   * A dump is promoted only if it is non-empty AND ends with its expected
+#     terminator, so a truncated-but-exit-0 dump can't masquerade as good.
 #   * Dumps land atomically (mv from .partial) — never a torn dump.
+#   * A persistently failed dump alerts via ntfy at {{ borgmatic_ntfy_priority_degraded }} (bypasses DND, as
+#     the old whole-backup failure did) and drops a DUMP-FAILED-<name>.txt
+#     marker that PERSISTS on disk until that DB dumps successfully, so a
+#     silent multi-night outage leaves durable evidence. ntfy's own stderr is
+#     deliberately NOT redirected: a broken alerting channel must be visible
+#     in /var/log/borgmatic.log.
 
 set -u
+umask 077
 
 dumpdir="{{ borgmatic_dump_dir }}"
 ntfy="{{ borgmatic_ntfy_bin }}"
 topic="{{ borgmatic_ntfy_topic }}"
 attempts={{ borgmatic_dump_attempts }}
 retry_delay={{ borgmatic_dump_retry_delay }}
+# Observed real dump time for both DBs is ~4m30s. The inner cap is >2x that,
+# and caps the worst-case before-hook stall at ~{{ (((borgmatic_dump_attempts | int * (borgmatic_dump_timeout_inner | int) + (borgmatic_dump_retry_delay | int)) * (borgmatic_databases | length)) / 60) | round | int }} min ({{ borgmatic_dump_attempts }} x {{ borgmatic_dump_timeout_inner }} + {{ borgmatic_dump_retry_delay }}, x{{ borgmatic_databases | length }} DBs)
+# so a wedged dockerd can't push the {{ '%02d' % borgmatic_cron_hour }}:{{ '%02d' % borgmatic_cron_minute }} run into warrig's 04:00 push to
+# the same gastown target.
+outer_timeout={{ borgmatic_dump_timeout_outer }}
+inner_timeout={{ borgmatic_dump_timeout_inner }}
 failed=""
 
 if ! mkdir -p "$dumpdir"; then
@@ -34,43 +56,64 @@ if ! mkdir -p "$dumpdir"; then
 fi
 chmod 700 "$dumpdir"
 
-{% for db in borgmatic_databases %}
-# {{ db.name }} ({{ db.type }}, container {{ db.container }})
-name="{{ db.name }}"
-out="$dumpdir/{{ db.dump_file }}"
-tmp="$out.partial"
-errfile="$dumpdir/.borgmatic-dump-$name.err"
-ok=""
-attempt=1
-while [ "$attempt" -le "$attempts" ]; do
-    if timeout {{ borgmatic_dump_timeout }} {{ db.dump_cmd }} >"$tmp" 2>"$errfile"; then
-        mv "$tmp" "$out"
-        chmod 600 "$out"
-        rm -f "$dumpdir/DUMP-FAILED-$name.txt" "$errfile" "$out.STALE"
-        ok=1
-        break
-    fi
-    echo "borgmatic-dump-dbs: $name dump attempt $attempt/$attempts failed" >&2
-    cat "$errfile" >&2
-    attempt=$((attempt + 1))
-    [ "$attempt" -le "$attempts" ] && sleep "$retry_delay"
-done
-if [ -z "$ok" ]; then
+# Serialise. Without this, a hand-run (`sudo borgmatic-run.sh` to debug last
+# night) overlapping the {{ '%02d' % borgmatic_cron_hour }}:{{ '%02d' % borgmatic_cron_minute }} cron would have its start-time rm below delete
+# the completed dumps of the run already in progress — silently, since that
+# run's dump script has already cleared its markers.
+exec 9>"$dumpdir/.lock"
+flock -n 9 || {
+    echo "borgmatic-dump-dbs: another dump run holds the lock, skipping" >&2
+    exit 0
+}
+
+# Drop anything left by a run that died before its cleanup hook, so a stale
+# .sql can never be archived next to a marker saying the dump failed.
+rm -f "$dumpdir"/*.sql "$dumpdir"/*.sql.partial
+
+# dump <name> <outfile> <terminator> <command...>
+# Sets $failed on persistent failure. Never aborts the script.
+dump() {
+    name=$1
+    out="$dumpdir/$2"
+    terminator=$3
+    shift 3
+    tmp="$out.partial"
+    errfile="$dumpdir/.borgmatic-dump-$name.err"
+    attempt=1
+
+    while [ "$attempt" -le "$attempts" ]; do
+        if "$@" >"$tmp" 2>"$errfile" \
+            && [ -s "$tmp" ] \
+            && tail -c 200 "$tmp" | grep -qF "$terminator"; then
+            mv "$tmp" "$out"
+            rm -f "$dumpdir/DUMP-FAILED-$name.txt" "$errfile"
+            return 0
+        fi
+        echo "borgmatic-dump-dbs: $name dump attempt $attempt/$attempts failed" >&2
+        cat "$errfile" >&2 2>/dev/null || true
+        attempt=$((attempt + 1))
+        [ "$attempt" -le "$attempts" ] && sleep "$retry_delay"
+    done
+
     rm -f "$tmp"
-    # Quarantine any leftover dump from an earlier night (possible when a
-    # failed create skipped cleanup) so a stale .sql can't masquerade as
-    # fresh next to a marker saying the opposite.
-    [ -f "$out" ] && mv -f "$out" "$out.STALE"
-    echo "$name dump FAILED after $attempts attempts at $(date -Iseconds); this archive has no fresh $name dump (any $out.STALE is a LEFTOVER from an earlier night). See /var/log/borgmatic.log" \
+    echo "$name dump FAILED after $attempts attempts at $(date -Iseconds); this archive has NO fresh $name dump. Marker persists until a dump succeeds. See /var/log/borgmatic.log" \
         >"$dumpdir/DUMP-FAILED-$name.txt"
     failed="$failed $name"
-fi
+    return 1
+}
+{% for db in borgmatic_databases %}
 
+{{ db.dump_comment }}
+dump {{ db.name }} {{ db.dump_file }} \
+    '{{ db.terminator }}' \
+    {{ db.dump_invocation | indent(4) }}
 {% endfor %}
+
 if [ -n "$failed" ]; then
     "$ntfy" publish -t 'Borg DB dump FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_degraded }} \
         --tags=backup,citadel,warning "$topic" \
         "DB dump(s) failed:$failed — filesystem backup continues WITHOUT fresh dump(s); see /var/log/borgmatic.log" \
         >/dev/null || true
 fi
+
 exit 0

@@ -60,26 +60,37 @@ checks:
 # without those binaries on the host, so dumps are staged by the
 # before-create command hook via `docker exec` into the running containers,
 # then the staging dir ({{ borgmatic_dump_dir }}) is captured as a regular
-# source directory. The after-create hook wipes the staging dir on success
-# (states: [finish]).
+# source directory. The after-create hook wipes the staging dir.
 #
-# borgmatic-dump-dbs.sh always exits 0 — a failed dump alerts via its own
-# ntfy but never aborts the filesystem backup (2026-08-12 hardening).
+# Migrated 2026-08-12 from the deprecated before_backup/after_backup/on_error
+# options. These three hooks are exactly what borgmatic's own normalize.py
+# rewrites those deprecated options into, so behaviour is unchanged.
+#
+# The trailing "|| true" is the load-bearing bit: a DB-dump stumble must never
+# abort the filesystem backup. borgmatic aborts the run if ANY before-hook
+# command exits non-zero — including 126/127 if a script goes missing or
+# loses its exec bit — so the guarantee lives here at the config level rather
+# than depending on every script staying well-behaved forever. A failed dump
+# still alerts (ntfy) and leaves a DUMP-FAILED marker; see
+# borgmatic-dump-dbs.sh.
 commands:
     - before: action
       when: [create]
       run:
-          - /usr/local/bin/borgmatic-dump-dbs.sh
-          - /usr/local/bin/borgmatic-export-system-state.sh
+          - "/usr/local/bin/borgmatic-dump-dbs.sh || true"
+          - "/usr/local/bin/borgmatic-export-system-state.sh || true"
 
     - after: action
       when: [create]
-      states: [finish]
       run:
           - /usr/local/bin/borgmatic-cleanup-dumps.sh
 
     # ntfy on error. Named priorities, single [redacted-vaulted-topic] topic, distinct
     # titles from warrig's so the two streams are visually separable.
+    # The "when:" list mirrors what on_error normalized to — without it the
+    # hook would also fire for interactive list/info/mount failures and page
+    # Cam at {{ borgmatic_ntfy_priority_fail }} priority for a typo'd archive name.
     - after: error
+      when: [create, prune, compact, check]
       run:
           - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see /var/log/borgmatic.log'"

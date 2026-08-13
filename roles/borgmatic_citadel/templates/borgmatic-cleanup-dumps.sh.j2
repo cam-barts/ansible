@@ -1,14 +1,42 @@
 #!/bin/sh
 # {{ ansible_managed }}
-# after-create command hook — wipes the staged DB dump dir once borgmatic has
-# captured it into the archive (runs on success only via states: [finish]).
-# Also clears DUMP-FAILED markers: they've been archived with the night's
-# backup and would otherwise linger forever. Quiet on missing/empty dir.
+# after-create command hook — wipes the staged DB dumps once borgmatic has
+# captured them into the archive. Runs on both success and failure, matching
+# the deprecated after_backup it replaces, so ~900MB of plaintext DB dumps
+# never linger on disk between runs.
+#
+# DUMP-FAILED-*.txt markers are deliberately NOT removed here: they are the
+# only durable on-disk evidence that a dump is missing. borgmatic-dump-dbs.sh
+# clears each marker itself once that DB dumps successfully.
+#
+# This hook is also the "did the dump script run at all?" assertion. The
+# before-create entries are suffixed with "|| true" so a DB stumble can't
+# abort the filesystem backup — but that also swallows a dump script that
+# never executed (bad path, lost exec bit, a copy that didn't land), which
+# would otherwise produce a cheerful "Borg Backup OK" with no DB dumps,
+# forever. Every run must leave EITHER a dump OR a failure marker per DB;
+# neither means the script didn't run. This hook has no "|| true", so a
+# non-zero exit here routes into the config's `after: error` hook and pages
+# at {{ borgmatic_ntfy_priority_fail }}. The archive is already created and intact by this point.
+#
+# NOTE: a non-zero exit here also skips prune/compact/check for that run.
+# Nothing is lost — retention simply doesn't advance, which is the safe
+# direction to fail — but that's why prune output goes missing on a paged night.
 
 set -u
 
 dumpdir="{{ borgmatic_dump_dir }}"
+rc=0
+
+for n in {{ borgmatic_databases | map(attribute='name') | join(' ') }}; do
+    [ -f "$dumpdir/$n-all.sql" ] || [ -f "$dumpdir/DUMP-FAILED-$n.txt" ] || {
+        echo "borgmatic-cleanup-dumps: no dump AND no marker for $n — did borgmatic-dump-dbs.sh run at all?" >&2
+        rc=1
+    }
+done
+
 if [ -d "$dumpdir" ]; then
-    rm -f "$dumpdir"/*.sql "$dumpdir"/*.sql.partial "$dumpdir"/*.sql.STALE "$dumpdir"/DUMP-FAILED-*.txt "$dumpdir"/.borgmatic-dump-*.err 2>/dev/null || true
+    rm -f "$dumpdir"/*.sql "$dumpdir"/*.sql.partial "$dumpdir"/.borgmatic-dump-*.err 2>/dev/null || true
 fi
-exit 0
+
+exit $rc
