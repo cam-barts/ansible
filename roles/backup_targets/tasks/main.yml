@@ -8,24 +8,24 @@
     update_cache: true
     cache_valid_time: 3600
   become: true
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Install backup-target packages (Debian family)
   ansible.builtin.apt:
     name: "{{ backup_target_packages }}"
     state: present
   become: true
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Sync pacman package db (Archlinux family)
   ansible.builtin.pacman:
     update_cache: true
   become: true
-  when: ansible_os_family == "Archlinux"
+  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Install backup-target packages (Archlinux family)
   ansible.builtin.pacman:
     name: "{{ backup_target_packages }}"
     state: present
   become: true
-  when: ansible_os_family == "Archlinux"
+  when: ansible_facts['os_family'] == "Archlinux"

@@ -4,14 +4,14 @@
     cache_valid_time: 3600
   become: true
   failed_when: false
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Install node_exporter (Debian/Raspbian)
   apt:
     name: prometheus-node-exporter
     state: present
   become: true
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Install node_exporter (Archlinux)
   pacman:
@@ -19,7 +19,7 @@
     state: present
     update_cache: yes
   become: true
-  when: ansible_os_family == "Archlinux"
+  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Enable and start node_exporter
   systemd:
