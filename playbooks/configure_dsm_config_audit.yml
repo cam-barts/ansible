@@ -1,0 +1,9 @@
+---
+# Installs the read-only synocfg-export.sh + the command=-restricted Windmill
+# key on gastown (unprivileged — everything lands under nux's home).
+# See ~/silverbullet/AI Generated/Barbossa/Homelab/DSM Config Backup Plan.md
+- name: Configure DSM config audit surfaces on gastown
+  hosts: synology
+  gather_facts: true
+  roles:
+    - dsm_config_audit

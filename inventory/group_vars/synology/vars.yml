@@ -4,3 +4,5 @@
 # stays useful (search the codebase for `rsnapshot_ntfy_topic`, find the
 # definition, see it points at `vault_*` — then `ansible-vault view` to read).
 rsnapshot_ntfy_topic: "{{ vault_rsnapshot_ntfy_topic }}"
+# Windmill runner's PUBLIC key for the dsm_config_audit forced-command entry.
+dsm_audit_windmill_pubkey: "{{ vault_dsm_audit_windmill_pubkey }}"

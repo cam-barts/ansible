@@ -1,0 +1,237 @@
+#!/bin/sh
+# synocfg-export.sh — read-only DSM config snapshot for the drift-audit pull.
+#
+# {{ ansible_managed }}
+#
+# WHAT THIS IS
+#   The Windmill `dsm-config-audit` flow SSHes into gastown as `nux` using a
+#   key whose authorized_keys entry is force-pinned to this script
+#   (command="..."). The script dumps every audited DSM config surface to
+#   STDOUT, one section per surface, and writes NOTHING to disk. Windmill
+#   captures the stdout, splits it on the section delimiters, commits one file
+#   per surface to the gastown-config gitea repo, and diffs HEAD vs HEAD~1.
+#
+#   Born from the rogue `synoschedtask id=4` that ran 700+ times over a month
+#   before anyone noticed (see [[AI Generated/Barbossa/Homelab/DSM Config
+#   Backup Plan]]). A diffable nightly snapshot of these surfaces would have
+#   surfaced that drift inside 24h.
+#
+# PRIVILEGE MODEL — IMPORTANT
+#   On gastown `nux` has NO sudo (`ansible_become: false`, confirmed in
+#   inventory/host_vars/gastown.yml). nux IS in the DSM `administrators` group,
+#   which grants direct read of his home and `/usr/syno/etc/synoschedule.d/`.
+#   So this script runs UNPRIVILEGED. Surfaces that genuinely require uid 0
+#   (synopkg/synofirewall authoritative output, /etc/shadow, root's crontab,
+#   /etc/sudoers) will fail the permission check; for those the `emit_*`
+#   helpers print a stable `# [WARN] ...` marker INSTEAD of vanishing, so a
+#   missing surface shows up as a constant line in the diff rather than as
+#   silent absence. The highest-value surface — scheduled tasks — is captured
+#   by reading the `.task` files directly, which nux CAN read, so the exact
+#   id=4 failure mode is covered without root.
+#
+# OUTPUT CONTRACT (Phase 2 / Windmill depends on this)
+#   Each surface begins with a line of the exact form:
+#       ===== FILE: <name> =====
+#   Everything from that line (exclusive) up to the next delimiter (or EOF) is
+#   the body that Windmill writes to `<name>` in the repo. Keep <name> stable
+#   across runs. DO NOT emit timestamps or run-varying data in bodies — the
+#   commit itself carries the time, and stray timestamps create diff noise
+#   (DSM already auto-rotates some of its own; see the plan's premortem).
+#
+# SECURITY — NEVER EXPORT SECRETS
+#   No private keys, ever: not SSH host/user private keys, not certificate
+#   private keys, not /etc/shadow password hashes. Surfaces below are written
+#   to read only public/fingerprint material. The Phase-1 hand-review task
+#   (assignee: cam) exists to eyeball the FIRST capture before it is scheduled.
+
+set -u
+LC_ALL=C
+export LC_ALL
+
+# --- helpers --------------------------------------------------------------
+
+# emit_header <name>  — print the section delimiter for surface <name>.
+emit_header() {
+    printf '===== FILE: %s =====\n' "$1"
+}
+
+# emit_cmd <name> <cmd...>  — run a command read-only, route stdout+stderr into
+# the section. On non-zero exit, leave a stable WARN marker (no host-specific
+# error text that would churn the diff) so the surface stays present.
+emit_cmd() {
+    _name=$1
+    shift
+    emit_header "$_name"
+    if _out=$("$@" 2>/dev/null); then
+        printf '%s\n' "$_out"
+    else
+        printf '# [WARN] command unavailable or permission denied: %s\n' "$1"
+    fi
+    printf '\n'
+}
+
+# emit_file <name> <path>  — cat a single file if readable, else WARN marker.
+emit_file() {
+    emit_header "$1"
+    if [ -r "$2" ]; then
+        cat "$2"
+    else
+        printf '# [WARN] not readable as %s: %s\n' "$(id -un)" "$2"
+    fi
+    printf '\n'
+}
+
+# emit_dir_files <name> <dir> <glob>  — concatenate readable files matching a
+# glob in a dir, each prefixed by a stable `--- <path> ---` banner. Sorted for
+# deterministic ordering. Never recurses into private-key material.
+emit_dir_files() {
+    _name=$1
+    _dir=$2
+    _glob=$3
+    emit_header "$_name"
+    if [ ! -d "$_dir" ]; then
+        printf '# [WARN] directory absent: %s\n\n' "$_dir"
+        return
+    fi
+    _found=0
+    for _f in $(find "$_dir" -maxdepth 1 -type f -name "$_glob" 2>/dev/null | sort); do
+        _found=1
+        printf -- '--- %s ---\n' "$_f"
+        if [ -r "$_f" ]; then
+            cat "$_f"
+        else
+            printf '# [WARN] not readable as %s\n' "$(id -un)"
+        fi
+        printf '\n'
+    done
+    [ "$_found" -eq 0 ] && printf '# [INFO] no files matching %s in %s\n' "$_glob" "$_dir"
+    printf '\n'
+}
+
+# =========================================================================
+# SURFACE 1 — Scheduled tasks (the surface that broke us).
+#   Primary capture: the raw .task files, readable by nux (administrators).
+#   Secondary: synoschedtask --list, which may need root → WARN if so.
+# =========================================================================
+emit_header "synoschedtask-files.txt"
+if [ -d "{{ dsm_audit_synoschedtask_dir }}" ]; then
+    for _t in $(find "{{ dsm_audit_synoschedtask_dir }}" -maxdepth 1 -name '*.task' 2>/dev/null | sort); do
+        printf -- '--- %s ---\n' "$_t"
+        if [ -r "$_t" ]; then cat "$_t"; else printf '# [WARN] not readable\n'; fi
+        printf '\n'
+    done
+else
+    printf '# [WARN] directory absent: {{ dsm_audit_synoschedtask_dir }}\n'
+fi
+printf '\n'
+emit_cmd "synoschedtask-list.txt" {{ dsm_audit_synoschedtask_bin }} --list
+
+# =========================================================================
+# SURFACE 2 — SMB shares + ACLs.
+# =========================================================================
+emit_cmd "synoshare-enum.txt" {{ dsm_audit_synoshare_bin }} --enum ALL
+emit_file "smb.conf" /etc/samba/smb.conf
+emit_dir_files "synoshare-confs.txt" "{{ dsm_audit_synoshare_dir }}" '*'
+
+# =========================================================================
+# SURFACE 3 — Local users / groups / sudoers.
+#   /etc/passwd and /etc/group are world-readable and are sufficient to detect
+#   account/group additions. /etc/shadow is INTENTIONALLY EXCLUDED: it needs
+#   root AND carries password hashes — a leak risk with no drift-detection
+#   payoff that passwd doesn't already provide. sudoers usually root-only → WARN.
+# =========================================================================
+emit_file "passwd" /etc/passwd
+emit_file "group" /etc/group
+emit_file "sudoers" /etc/sudoers
+emit_dir_files "sudoers.d.txt" /etc/sudoers.d '*'
+
+# =========================================================================
+# SURFACE 4 — SSH state. Public config + PUBLIC-KEY FINGERPRINTS only.
+#   Private host keys are never read. authorized_keys for nux is readable;
+#   root's is root-only → WARN.
+# =========================================================================
+emit_file "sshd_config" /etc/ssh/sshd_config
+emit_header "ssh-host-key-fingerprints.txt"
+_ff=0
+for _pub in $(find /etc/ssh -maxdepth 1 -name '*.pub' 2>/dev/null | sort); do
+    _ff=1
+    {{ dsm_audit_sshkeygen_bin }} -lf "$_pub" 2>/dev/null \
+        || printf '# [WARN] could not fingerprint %s\n' "$_pub"
+done
+[ "$_ff" -eq 0 ] && printf '# [WARN] no public host keys found in /etc/ssh\n'
+printf '\n'
+emit_file "authorized_keys.nux.txt" "/var/services/homes/{{ dsm_audit_runner_user }}/.ssh/authorized_keys"
+emit_file "authorized_keys.root.txt" /root/.ssh/authorized_keys
+
+# =========================================================================
+# SURFACE 5 — Certificates. Chain + metadata only; PRIVATE KEYS EXCLUDED.
+#   We list the cert tree and pull subject/issuer/dates/fingerprint from each
+#   cert.pem via openssl. *.key / privkey.pem are never read.
+# =========================================================================
+emit_header "certificate-tree.txt"
+if [ -d "{{ dsm_audit_certificate_dir }}" ]; then
+    find "{{ dsm_audit_certificate_dir }}" 2>/dev/null \
+        | grep -viE '(privkey|\.key)$' | sort \
+        || printf '# [WARN] could not list %s\n' "{{ dsm_audit_certificate_dir }}"
+else
+    printf '# [WARN] directory absent: {{ dsm_audit_certificate_dir }}\n'
+fi
+printf '\n'
+emit_header "certificate-metadata.txt"
+_cf=0
+for _c in $(find "{{ dsm_audit_certificate_dir }}" -name 'cert.pem' 2>/dev/null | sort); do
+    _cf=1
+    printf -- '--- %s ---\n' "$_c"
+    {{ dsm_audit_openssl_bin }} x509 -in "$_c" -noout -subject -issuer -startdate -enddate -fingerprint -sha256 2>/dev/null \
+        || printf '# [WARN] openssl could not read %s (not a cert, or unreadable)\n' "$_c"
+    printf '\n'
+done
+[ "$_cf" -eq 0 ] && printf '# [INFO] no cert.pem files found under %s\n' "{{ dsm_audit_certificate_dir }}"
+printf '\n'
+
+# =========================================================================
+# SURFACE 6 — Installed package manifest.
+#   synopkg may need root → WARN; /var/packages listing is a nux-readable
+#   fallback that still shows what is installed.
+# =========================================================================
+emit_cmd "synopkg-installed.txt" {{ dsm_audit_synopkg_bin }} list --installed
+emit_cmd "var-packages-listing.txt" ls -1 /var/packages
+
+# =========================================================================
+# SURFACE 7 — Crontabs. nux's is readable; root's needs root → WARN.
+# =========================================================================
+emit_cmd "crontab.nux.txt" crontab -l
+emit_file "etc-crontab" /etc/crontab
+emit_dir_files "etc-cron.d.txt" /etc/cron.d '*'
+
+# =========================================================================
+# SURFACE 8 — synoinfo delta vs defaults (the meaningful, low-noise diff).
+# =========================================================================
+emit_header "synoinfo-delta.txt"
+if [ -r /etc.defaults/synoinfo.conf ] && [ -r /etc/synoinfo.conf ]; then
+    # diff exits 1 when files differ; that's expected, not an error.
+    diff /etc.defaults/synoinfo.conf /etc/synoinfo.conf
+    [ $? -gt 1 ] && printf '# [WARN] diff failed on synoinfo.conf\n'
+else
+    printf '# [WARN] one or both synoinfo.conf files not readable\n'
+fi
+printf '\n'
+
+# =========================================================================
+# SURFACE 9 — Firewall ruleset.
+#   DSM 7.3 command surface is unconfirmed (plan flags this). synofirewall
+#   almost certainly needs root here → WARN. Left in so that if Cam later
+#   grants the runner the right privilege, the surface populates with no
+#   script change. CONFIRM the exact DSM 7.3 subcommand before relying on it.
+# =========================================================================
+emit_cmd "firewall-rules.txt" {{ dsm_audit_synofirewall_bin }} --rule-list
+
+# =========================================================================
+# SURFACE 10 — Network config.
+# =========================================================================
+emit_cmd "ip-addr.txt" ip addr
+emit_cmd "ip-route.txt" ip route
+emit_file "etc-hosts" /etc/hosts
+emit_file "resolv.conf" /etc/resolv.conf
+
+# End of export.

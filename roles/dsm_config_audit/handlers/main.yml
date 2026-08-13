@@ -1,0 +1,4 @@
+---
+# No handlers. The export script is invoked on demand by the Windmill key's
+# forced command; there is no daemon to reload when the script or key changes.
+# File kept for structural symmetry with the other roles.

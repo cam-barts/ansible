@@ -1,0 +1,63 @@
+---
+# dsm_config_audit — read-only DSM config-drift snapshot for the Windmill pull.
+#
+# This role does TWO things on gastown, both as the unprivileged `nux` account
+# (no sudo on gastown — see inventory/host_vars/gastown.yml):
+#   1. drops `synocfg-export.sh` into nux's home, and
+#   2. pins the Windmill runner's public key in nux's authorized_keys with a
+#      forced `command=` so that key can ONLY run the export script.
+# It deliberately does NOT schedule anything (Phase 2 / Windmill owns the
+# cadence) and writes nothing outside nux's home.
+
+# --- export script -------------------------------------------------------
+# Lives in nux's home, same as the rsnapshot wrapper, because nux can write
+# there directly without root. /usr/local/bin would need sudo we don't have.
+dsm_audit_script_path: /var/services/homes/nux/synocfg-export.sh
+dsm_audit_script_owner: nux
+dsm_audit_script_group: users
+dsm_audit_script_mode: "0755"
+
+# Account the Windmill key authenticates as, and whose authorized_keys we edit.
+dsm_audit_runner_user: nux
+dsm_audit_authorized_keys_path: "/var/services/homes/{{ dsm_audit_runner_user }}/.ssh/authorized_keys"
+
+# --- Windmill runner public key ------------------------------------------
+# The PUBLIC key Windmill presents when it SSHes in to run the export. The
+# real value belongs in inventory/group_vars/synology/vault.yml as
+# `vault_dsm_audit_windmill_pubkey` and is referenced from vars.yml — same
+# pattern as rsnapshot_ntfy_topic. This sentinel makes an unconfigured run
+# fail loudly (see the assert in tasks/main.yml) instead of installing a
+# bogus key.
+dsm_audit_windmill_pubkey: "changeme_set_via_vault"
+
+# Comment written on the authorized_keys entry, so it's identifiable and so
+# the authorized_key module can manage exactly this entry idempotently.
+dsm_audit_key_comment: "windmill-dsm-config-audit"
+
+# Forced-command SSH restrictions. The key can do nothing but run the export.
+dsm_audit_key_options:
+  - 'command="{{ dsm_audit_script_path }}"'
+  - "no-agent-forwarding"
+  - "no-port-forwarding"
+  - "no-pty"
+  - "no-user-rc"
+  - "no-X11-forwarding"
+
+# Set false to template the script WITHOUT touching authorized_keys (useful
+# for a first hand-review pass before granting the key any access at all).
+dsm_audit_install_authorized_key: true
+
+# --- surface locations / binaries ----------------------------------------
+# Paths the export script reads. Overridable per-host if a future Synology
+# differs. Binaries are referenced by name so $PATH resolution applies; pin to
+# absolute paths here if a locked-down login shell ever strips PATH.
+dsm_audit_synoschedtask_dir: /usr/syno/etc/synoschedule.d/root
+dsm_audit_synoshare_dir: /usr/syno/etc/synoshare
+dsm_audit_certificate_dir: /usr/syno/etc/certificate
+
+dsm_audit_synoschedtask_bin: synoschedtask
+dsm_audit_synoshare_bin: synoshare
+dsm_audit_synopkg_bin: synopkg
+dsm_audit_synofirewall_bin: synofirewall
+dsm_audit_sshkeygen_bin: ssh-keygen
+dsm_audit_openssl_bin: openssl

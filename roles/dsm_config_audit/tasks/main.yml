@@ -1,0 +1,47 @@
+---
+# dsm_config_audit — installs the read-only export script and the forced-command
+# Windmill key on gastown. Runs unprivileged (no become): every path this role
+# writes is under nux's own home, which nux owns directly on DSM.
+
+- name: Fail early if the Windmill public key is still the sentinel
+  ansible.builtin.assert:
+    that:
+      - dsm_audit_windmill_pubkey != "changeme_set_via_vault"
+      - dsm_audit_windmill_pubkey | length > 0
+    fail_msg: >-
+      dsm_audit_windmill_pubkey is unset. Put the Windmill runner's PUBLIC key
+      in inventory/group_vars/synology/vault.yml (vault_dsm_audit_windmill_pubkey)
+      and reference it from vars.yml before running this role.
+    success_msg: "Windmill public key is configured."
+  when: dsm_audit_install_authorized_key | bool
+
+- name: Ensure nux's ~/.ssh exists with sane perms
+  ansible.builtin.file:
+    path: "{{ dsm_audit_authorized_keys_path | dirname }}"
+    state: directory
+    owner: "{{ dsm_audit_script_owner }}"
+    group: "{{ dsm_audit_script_group }}"
+    mode: "0700"
+
+- name: Install the read-only DSM config export script
+  ansible.builtin.template:
+    src: synocfg-export.sh.j2
+    dest: "{{ dsm_audit_script_path }}"
+    owner: "{{ dsm_audit_script_owner }}"
+    group: "{{ dsm_audit_script_group }}"
+    mode: "{{ dsm_audit_script_mode }}"
+    # POSIX-sh syntax check on the rendered script before it lands. The forced
+    # command points here, so a broken script means a silently broken audit.
+    validate: "sh -n %s"
+
+- name: Pin the Windmill runner key to the export script (forced command)
+  ansible.posix.authorized_key:
+    user: "{{ dsm_audit_runner_user }}"
+    key: "{{ dsm_audit_windmill_pubkey }}"
+    comment: "{{ dsm_audit_key_comment }}"
+    key_options: "{{ dsm_audit_key_options | join(',') }}"
+    path: "{{ dsm_audit_authorized_keys_path }}"
+    manage_dir: false
+    exclusive: false
+    state: present
+  when: dsm_audit_install_authorized_key | bool

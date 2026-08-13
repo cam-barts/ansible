@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: dsm_config_audit
+  author: Cam Barts
+  description: >
+    Installs an unprivileged, read-only DSM config-snapshot script on the
+    gastown Synology and pins a Windmill runner's SSH key to it with a forced
+    command, so a nightly pull can capture a diffable audit trail of DSM config
+    surfaces (scheduled tasks, shares, users, SSH, certs, packages, crontabs,
+    synoinfo, firewall, network). Auditor (Windmill) stays decoupled from
+    auditee (gastown). Pairs with the Windmill `dsm-config-audit` flow.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: GenericUNIX
+      versions:
+        - any
+dependencies: []
