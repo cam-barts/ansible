@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: borgmatic_warrig
+  author: Cam Barts
+  description: >
+    Minimal companion to warrig's hand-managed borgmatic. Installs the Arch
+    system-state export script (pacman lists, pacman.conf/mirrorlist, fstab,
+    enabled systemd units, timedatectl, hostname) and the ~/.system-state
+    directory it writes into, so machine-shape state is captured in every
+    archive — mirroring borgmatic_citadel's Phase 1 broadening. Does NOT own
+    /etc/borgmatic/config.yaml; the before_backup wiring is a one-time manual
+    edit (see README). Scoped narrow per the Package-list Export plan, Phase 2.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: ArchLinux
+      versions:
+        - any
+    - name: EndeavourOS
+      versions:
+        - any
+
+dependencies: []

@@ -57,18 +57,29 @@ checks:
 # DB dumps. Borgmatic's native postgresql_databases/mariadb_databases hooks
 # would need pg_dumpall / mariadb-dump installed on the host and direct
 # network access into the containers. Citadel runs the DBs inside docker
-# without those binaries on the host, so dumps are staged by
-# before_backup_command via `docker exec` into the running containers, then
-# the staging dir ({{ borgmatic_dump_dir }}) is captured as a regular source
-# directory. after_backup_command wipes the staging dir on success.
-before_backup:
-    - /usr/local/bin/borgmatic-dump-dbs.sh
-    - /usr/local/bin/borgmatic-export-pkglists.sh
+# without those binaries on the host, so dumps are staged by the
+# before-create command hook via `docker exec` into the running containers,
+# then the staging dir ({{ borgmatic_dump_dir }}) is captured as a regular
+# source directory. The after-create hook wipes the staging dir on success
+# (states: [finish]).
+#
+# borgmatic-dump-dbs.sh always exits 0 — a failed dump alerts via its own
+# ntfy but never aborts the filesystem backup (2026-08-12 hardening).
+commands:
+    - before: action
+      when: [create]
+      run:
+          - /usr/local/bin/borgmatic-dump-dbs.sh
+          - /usr/local/bin/borgmatic-export-system-state.sh
 
-after_backup:
-    - /usr/local/bin/borgmatic-cleanup-dumps.sh
+    - after: action
+      when: [create]
+      states: [finish]
+      run:
+          - /usr/local/bin/borgmatic-cleanup-dumps.sh
 
-# ntfy hooks. Named priorities, single [redacted-vaulted-topic] topic, distinct
-# titles from warrig's so the two streams are visually separable.
-on_error:
-    - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see /var/log/borgmatic.log'"
+    # ntfy on error. Named priorities, single [redacted-vaulted-topic] topic, distinct
+    # titles from warrig's so the two streams are visually separable.
+    - after: error
+      run:
+          - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see /var/log/borgmatic.log'"

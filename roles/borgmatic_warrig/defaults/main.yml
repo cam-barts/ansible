@@ -1,0 +1,22 @@
+---
+# borgmatic_warrig — minimal role: drop the system-state export script and the
+# directory it writes into, so warrig's existing borgmatic run captures Arch
+# machine-shape state (package lists, pacman/mirror config, fstab, enabled
+# units, etc.) into every archive — same as citadel already does.
+#
+# SCOPE (deliberately narrow — see "Borgmatic Package-list Export" plan, Phase 2):
+#   This role does NOT own /etc/borgmatic/config.yaml. Warrig's borgmatic config
+#   is still hand-managed there. This role only installs the export script and
+#   creates the state directory. The one-time before_backup wiring is a manual
+#   edit documented in README.md (we don't blind-mutate the hand-managed config).
+
+# System-state capture directory. User-owned (nux:nux 0750) under $HOME so it
+# rides along in warrig's existing /home/nux home-dir backup source.
+borgmatic_system_state_dir: /home/nux/.system-state
+
+# Where the export script lands. Root-owned 0750 to match citadel.
+borgmatic_export_script_path: /usr/local/bin/borgmatic-export-system-state.sh
+
+# Owner of the state dir (the user whose $HOME borgmatic already backs up).
+borgmatic_state_owner: nux
+borgmatic_state_group: nux

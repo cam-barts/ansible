@@ -1,0 +1,45 @@
+---
+# borgmatic_warrig — install the system-state export script + its output dir.
+#
+# Idempotency:
+#   * template/file modules converge; safe to re-run.
+#   * Legacy pkglists script removal is state:absent (no-op once gone).
+#
+# What this role intentionally does NOT do:
+#   * It does not render /etc/borgmatic/config.yaml (hand-managed on warrig).
+#   * It does not wire before_backup automatically — that needs a one-time edit
+#     to the live config, which we can't safely template without first
+#     capturing it. See README.md "Wiring the hook". Out of scope per plan.
+
+- name: Ensure system-state capture directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_system_state_dir }}"
+    state: directory
+    owner: "{{ borgmatic_state_owner }}"
+    group: "{{ borgmatic_state_group }}"
+    mode: "0750"
+
+- name: Install borgmatic-export-system-state.sh
+  ansible.builtin.template:
+    src: borgmatic-export-system-state.sh.j2
+    dest: "{{ borgmatic_export_script_path }}"
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Remove legacy borgmatic-export-pkglists.sh if present (superseded)
+  ansible.builtin.file:
+    path: /usr/local/bin/borgmatic-export-pkglists.sh
+    state: absent
+
+# Post-install reminder: surfaces the manual wiring step in playbook output so
+# it isn't silently forgotten. Non-failing; purely informational.
+- name: Remind operator to wire before_backup + source_directories once
+  ansible.builtin.debug:
+    msg: >-
+      borgmatic_warrig: export script installed at {{ borgmatic_export_script_path }}.
+      ONE-TIME manual step still required in /etc/borgmatic/config.yaml on warrig:
+      (1) add '{{ borgmatic_system_state_dir }}' to source_directories,
+      (2) add '{{ borgmatic_export_script_path }}' to the before_backup commands.
+      Then verify with: sudo borgmatic --config /etc/borgmatic/config.yaml create --dry-run -v 1
+      See roles/borgmatic_warrig/README.md.

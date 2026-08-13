@@ -1,0 +1,16 @@
+---
+# Apply the minimal borgmatic_warrig role (system-state export script + dir).
+#
+#   ansible-playbook -i inventory/backup_targets playbooks/configure_borgmatic_warrig.yml
+#
+# warrig is in the arch_backup_targets group of inventory/backup_targets. This
+# playbook intentionally does NOT touch /etc/borgmatic/config.yaml or the
+# warrig->gastown SSH trust (both already exist, hand-managed). After applying,
+# do the one-time before_backup wiring documented in
+# roles/borgmatic_warrig/README.md, then `borgmatic ... create --dry-run`.
+- name: Install system-state export on warrig's borgmatic
+  hosts: warrig
+  become: true
+  gather_facts: true
+  roles:
+    - borgmatic_warrig

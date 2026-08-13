@@ -1,27 +1,76 @@
 #!/bin/sh
 # {{ ansible_managed }}
-# Staged DB dump runner invoked by borgmatic's before_backup hook.
+# Staged DB dump runner invoked by borgmatic's before-create command hook.
 #
-# Each dump is written to {{ borgmatic_dump_dir }}/<file>. If a single dump
-# fails the whole script exits non-zero so borgmatic aborts the backup
-# (preferable to silently shipping yesterday's stale dump or a missing one).
+# Resilience contract (2026-08-12 hardening):
+#   * The filesystem backup is the load-bearing tier: this script ALWAYS
+#     exits 0 so a dump failure never aborts borgmatic.
+#   * Each dump gets {{ borgmatic_dump_attempts }} attempts ({{ borgmatic_dump_retry_delay }}s apart) to ride out
+#     transient races (e.g. BunkerWeb's ephemeral test_<uuid> tables) and
+#     brief restarts.
+#   * A persistently failed dump sends its own ntfy alert (stderr kept so
+#     a broken ntfy is visible in /var/log/borgmatic.log) and drops a
+#     DUMP-FAILED-<name>.txt marker into the staging dir so the night's
+#     archive self-documents the missing dump.
+#   * Each attempt is capped by timeout(1) so a wedged docker/db can't
+#     hang the hook (and with it the whole backup) forever.
+#   * Dumps land atomically (mv from .partial) — never a torn dump.
 
-set -eu
+set -u
 
 dumpdir="{{ borgmatic_dump_dir }}"
-mkdir -p "$dumpdir"
+ntfy="{{ borgmatic_ntfy_bin }}"
+topic="{{ borgmatic_ntfy_topic }}"
+attempts={{ borgmatic_dump_attempts }}
+retry_delay={{ borgmatic_dump_retry_delay }}
+failed=""
+
+if ! mkdir -p "$dumpdir"; then
+    "$ntfy" publish -t 'Borg DB dump FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_degraded }} \
+        --tags=backup,citadel,warning "$topic" \
+        "cannot create $dumpdir — filesystem backup continuing with NO fresh DB dumps" \
+        >/dev/null || true
+    exit 0
+fi
 chmod 700 "$dumpdir"
 
 {% for db in borgmatic_databases %}
 # {{ db.name }} ({{ db.type }}, container {{ db.container }})
+name="{{ db.name }}"
 out="$dumpdir/{{ db.dump_file }}"
 tmp="$out.partial"
-if ! {{ db.dump_cmd }} >"$tmp" 2>/tmp/borgmatic-dump-{{ db.name }}.err; then
-    echo "borgmatic-dump-dbs: {{ db.name }} dump failed" >&2
-    cat /tmp/borgmatic-dump-{{ db.name }}.err >&2
-    exit 1
+errfile="$dumpdir/.borgmatic-dump-$name.err"
+ok=""
+attempt=1
+while [ "$attempt" -le "$attempts" ]; do
+    if timeout {{ borgmatic_dump_timeout }} {{ db.dump_cmd }} >"$tmp" 2>"$errfile"; then
+        mv "$tmp" "$out"
+        chmod 600 "$out"
+        rm -f "$dumpdir/DUMP-FAILED-$name.txt" "$errfile" "$out.STALE"
+        ok=1
+        break
+    fi
+    echo "borgmatic-dump-dbs: $name dump attempt $attempt/$attempts failed" >&2
+    cat "$errfile" >&2
+    attempt=$((attempt + 1))
+    [ "$attempt" -le "$attempts" ] && sleep "$retry_delay"
+done
+if [ -z "$ok" ]; then
+    rm -f "$tmp"
+    # Quarantine any leftover dump from an earlier night (possible when a
+    # failed create skipped cleanup) so a stale .sql can't masquerade as
+    # fresh next to a marker saying the opposite.
+    [ -f "$out" ] && mv -f "$out" "$out.STALE"
+    echo "$name dump FAILED after $attempts attempts at $(date -Iseconds); this archive has no fresh $name dump (any $out.STALE is a LEFTOVER from an earlier night). See /var/log/borgmatic.log" \
+        >"$dumpdir/DUMP-FAILED-$name.txt"
+    failed="$failed $name"
 fi
-mv "$tmp" "$out"
-chmod 600 "$out"
 
 {% endfor %}
+if [ -n "$failed" ]; then
+    "$ntfy" publish -t 'Borg DB dump FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_degraded }} \
+        --tags=backup,citadel,warning "$topic" \
+        "DB dump(s) failed:$failed — filesystem backup continues WITHOUT fresh dump(s); see /var/log/borgmatic.log" \
+        >/dev/null || true
+fi
+exit 0

@@ -1,0 +1,54 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Captures Arch system state for recovery rehearsal. Writes into
+# {{ borgmatic_system_state_dir }} which is a borgmatic source directory,
+# so these files ride along in every borg archive automatically.
+#
+# Replaces the narrower borgmatic-export-pkglists.sh which only dumped
+# pacman -Qe and -Qm into /etc/pkg-*.list.
+#
+# `|| true` on every line so a single failed capture (e.g. no orphans →
+# exit 1 from pacman) doesn't fail the whole backup.
+
+set -u
+
+OUT="{{ borgmatic_system_state_dir }}"
+mkdir -p "$OUT"
+
+# 1. Explicit packages — the "wanted" set. Restore path:
+#    paru -S --needed - < packages-explicit.txt
+pacman -Qqe   > "$OUT/packages-explicit.txt"  2>/dev/null || true
+
+# 2. Foreign / AUR packages. May need manual rebuild; this is the audit
+#    list, not necessarily a one-shot installable.
+pacman -Qqm   > "$OUT/packages-foreign.txt"   2>/dev/null || true
+
+# 3. Orphans — deps with no parent. A sudden spike usually means something
+#    got uninstalled accidentally.
+pacman -Qqdt  > "$OUT/packages-orphans.txt"   2>/dev/null || true
+
+# 4. Full metadata — version, install date, packager. Bigger, less
+#    diff-clean, but lets the rehearsal answer "what version was this on
+#    the day before the failure?" without trawling borg.
+pacman -Qi    > "$OUT/packages-info.txt"      2>/dev/null || true
+
+# 5. Pacman / paru config — repo state and mirror selection.
+cp /etc/pacman.conf            "$OUT/pacman.conf"            2>/dev/null || true
+cp /etc/pacman.d/mirrorlist    "$OUT/mirrorlist"             2>/dev/null || true
+
+# 6. fstab — curated copy alongside the package lists.
+cp /etc/fstab                  "$OUT/fstab"                  2>/dev/null || true
+
+# 7. Enabled systemd units — catches "this service was enabled but
+#    Ansible didn't know about it".
+systemctl list-unit-files --state=enabled --no-legend \
+                              > "$OUT/enabled-units.txt"     2>/dev/null || true
+
+# 8. Timezone / clock.
+timedatectl                   > "$OUT/timedatectl.txt"       2>/dev/null || true
+
+# 9. Hostname info.
+hostname                      > "$OUT/hostname.txt"          2>/dev/null || true
+hostnamectl                   > "$OUT/hostnamectl.txt"       2>/dev/null || true
+
+exit 0

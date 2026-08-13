@@ -1,12 +1,14 @@
 #!/bin/sh
 # {{ ansible_managed }}
-# after_backup hook — wipes the staged DB dump dir once borgmatic has
-# captured it into the archive. Quiet on missing dir / empty dir.
+# after-create command hook — wipes the staged DB dump dir once borgmatic has
+# captured it into the archive (runs on success only via states: [finish]).
+# Also clears DUMP-FAILED markers: they've been archived with the night's
+# backup and would otherwise linger forever. Quiet on missing/empty dir.
 
 set -u
 
 dumpdir="{{ borgmatic_dump_dir }}"
 if [ -d "$dumpdir" ]; then
-    rm -f "$dumpdir"/*.sql "$dumpdir"/*.sql.partial 2>/dev/null || true
+    rm -f "$dumpdir"/*.sql "$dumpdir"/*.sql.partial "$dumpdir"/*.sql.STALE "$dumpdir"/DUMP-FAILED-*.txt "$dumpdir"/.borgmatic-dump-*.err 2>/dev/null || true
 fi
 exit 0

@@ -166,13 +166,26 @@
     group: root
     mode: "0750"
 
-- name: Install borgmatic-export-pkglists.sh
+- name: Ensure system-state capture directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_system_state_dir }}"
+    state: directory
+    owner: nux
+    group: nux
+    mode: "0750"
+
+- name: Install borgmatic-export-system-state.sh
   ansible.builtin.template:
-    src: borgmatic-export-pkglists.sh.j2
-    dest: /usr/local/bin/borgmatic-export-pkglists.sh
+    src: borgmatic-export-system-state.sh.j2
+    dest: /usr/local/bin/borgmatic-export-system-state.sh
     owner: root
     group: root
     mode: "0750"
+
+- name: Remove legacy borgmatic-export-pkglists.sh (superseded)
+  ansible.builtin.file:
+    path: /usr/local/bin/borgmatic-export-pkglists.sh
+    state: absent
 
 - name: Install borgmatic-run.sh wrapper
   ansible.builtin.template:
