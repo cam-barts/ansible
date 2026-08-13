@@ -1,0 +1,28 @@
+---
+# cAdvisor container settings. Defaults suit the published-port hosts
+# (Raspberry Pis + warrig) that Prometheus scrapes over the LAN at
+# <host>:{{ cadvisor_port }}. Override per-host in host_vars as needed.
+
+cadvisor_image: gcr.io/cadvisor/cadvisor
+cadvisor_version: v0.52.1
+cadvisor_container_name: cadvisor
+cadvisor_restart_policy: unless-stopped
+
+# Memory cap. cAdvisor's real RSS is ~70 MB; the cap keeps its reclaimable
+# page cache from ballooning. 256m is right-sized for the ~1 GB Pis; bump to
+# 512m on larger hosts (e.g. warrig) via host_vars.
+cadvisor_memory: 256m
+
+# Publish the container port to the host so an external Prometheus can scrape
+# it (Pis/warrig). Set false on hosts where Prometheus shares cAdvisor's docker
+# network and scrapes it by container name (e.g. citadel on monitoring_default).
+cadvisor_publish_port: true
+cadvisor_port: 8080
+
+# --docker_only limits cAdvisor to docker cgroups instead of every system
+# cgroup — meaningfully lighter on weak CPUs (the Pis).
+cadvisor_docker_only: true
+
+# Extra docker networks to attach (list of {name: ...}). Empty = default bridge.
+# For citadel: [{name: monitoring_default}] with cadvisor_publish_port: false.
+cadvisor_networks: []

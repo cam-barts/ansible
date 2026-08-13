@@ -1,0 +1,5 @@
+- name: Deploy cAdvisor
+  hosts: cadvisor
+  gather_facts: true
+  roles:
+    - cadvisor

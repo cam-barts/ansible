@@ -8,6 +8,7 @@ ansible_user=pirate
 
 [archlinux]
 citadel ansible_host=citadel.shadeking.cam.local
+warrig  ansible_host=warrig.shadeking.cam.local
 
 [archlinux:vars]
 ansible_user=nux
@@ -15,3 +16,10 @@ ansible_user=nux
 [node_exporter:children]
 raspberrypis
 archlinux
+
+# Hosts that also run the cAdvisor container (per-container metrics). Currently
+# the Pis; future Pis added to [raspberrypis] are covered automatically. warrig
+# and citadel run cAdvisor too but are managed out-of-band for now (citadel uses
+# an internal network; see roles/cadvisor/README.md to fold them in via host_vars).
+[cadvisor:children]
+raspberrypis
