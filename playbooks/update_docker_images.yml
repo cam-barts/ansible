@@ -1,0 +1,115 @@
+---
+# One-shot Watchtower image-update pass, then a cleanup, across the docker
+# hosts. This is an ACTION playbook, not a configure_* one: it is not
+# idempotent by design, and every run can recreate containers.
+#
+# READ THIS BEFORE GIVING IT A BUTTON PRESS.
+#
+# What it does, in order:
+#   1. `watchtower --run-once`. For every RUNNING container, re-resolves the
+#      tag that container is already on and, if the registry digest moved,
+#      pulls it and RECREATES the container. It does not change tags: a
+#      container on postgres:14 stays on 14, it just gets 14's latest digest.
+#      A container on a floating tag (:latest, :main, :release, or a moving
+#      named tag like silverbullet's v2-runtime-api) can move a long way.
+#   2. `docker system prune -af`. Removes all images not attached to a
+#      running container, plus stopped containers, unused networks and build
+#      cache. Deliberately NO `--volumes`: named volumes, and therefore every
+#      database in the lab, are left alone. Do not add it.
+#
+# Blast radius (measured 2026-08-18, not estimated):
+#
+#   host          running  loki-logged  images
+#   warrig             47           44      56
+#   citadel            27           27      27
+#   black-pearl         6            0       6
+#   wellerman           6            0       6
+#   billy-of-tea        4            0       4
+#
+# Three things that follow from those numbers:
+#
+#   - warrig and citadel set `log-driver: loki` daemon-wide (see their
+#     host_vars), so 71 of the 90 containers in scope are loki-logged.
+#     Recreating a loki-logged container is the operation that hits the
+#     teardown deadlock roles/cadvisor guards against with
+#     `cadvisor_allow_recreate`, and clearing it needs a docker daemon
+#     restart. A fleet-wide run-once has no such guard, because Watchtower
+#     decides what to recreate, not this playbook.
+#   - Semaphore itself runs on warrig (semaphoreui/semaphore:v2.19.8, plus
+#     its postgres:18). Both are in scope. Those are pinned tags so they
+#     should not move, but if either tag is ever republished, Watchtower
+#     would recreate the container that is running this playbook, killing
+#     the task mid-flight. Prefer `--limit` to a Pi when testing.
+#   - Zero containers anywhere currently carry the Watchtower opt-out label,
+#     so today this updates everything it can. See the guardrail below.
+#
+# The guardrail (recommended, and it needs no change to this file):
+# Watchtower's nicholas-fedor fork keeps the upstream label namespace,
+# confirmed in pkg/container/metadata.go. Label a container
+#
+#     com.centurylinklabs.watchtower.enable=false
+#
+# and Watchtower skips it while still updating everything else. That is the
+# opt-out to put on the pinned and the stateful things: databases, BunkerWeb,
+# Windmill, silverbullet's runtime image. Add it in the compose file's
+# `labels:` and recreate that container once, by hand, when you choose to.
+#
+# gastown is out of scope and must stay out: it has no `docker` on PATH and
+# no /var/run/docker.sock under nux at all (checked 2026-08-18), so DSM's
+# Container Manager is not reachable this way. The default `hosts:` pattern
+# excludes it, and so does pwnbox.
+#
+# `docker_update_target` narrows the run without an inventory group, the same
+# idiom configure_docker_log_rotation.yml uses. --limit can only narrow a
+# pattern, never widen it:
+#   ansible-playbook -e docker_update_target=black-pearl \
+#       playbooks/update_docker_images.yml
+- name: Update Docker images (Watchtower run-once) and prune
+  hosts: "{{ docker_update_target | default('archlinux:raspberrypis') }}"
+  gather_facts: false
+  vars:
+    # nux (warrig, citadel) and pirate (the Pis) are all in the `docker`
+    # group, so the socket is readable without escalation and neither Arch
+    # host needs the sudo password it does not have.
+    #
+    # This must be the VARIABLE, not `become: false`. host_vars sets
+    # `ansible_become: true` on all five hosts, and an inventory variable
+    # outranks the play keyword: with `become: false` here, citadel still
+    # fails with "Missing sudo password" and the Pis still escalate to root.
+    # Play vars outrank host_vars, so this form actually wins. Verified.
+    ansible_become: false
+  tasks:
+    - name: Run Watchtower once to update running containers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - -v
+          - /var/run/docker.sock:/var/run/docker.sock
+          - ghcr.io/nicholas-fedor/watchtower:latest
+          - --run-once
+      register: watchtower_run
+      # Watchtower ends a session with a logrus summary line:
+      #   msg="Session done" Failed=0 Scanned=47 Updated=0
+      # `Updated=[1-9]` matches 1 and 47 but not 0. logrus writes to stderr,
+      # so check both streams. If upstream ever changes that line this
+      # degrades to reporting "ok" on a run that did update something; the
+      # prune task below still reports the real work, and the task log has
+      # the full output either way.
+      changed_when: >-
+        watchtower_run.stdout is search('Updated=[1-9]')
+        or watchtower_run.stderr is search('Updated=[1-9]')
+
+    - name: Prune unused images, stopped containers, networks and build cache
+      # -f because there is no TTY to answer the confirmation prompt, -a to
+      # take all unused images and not just dangling ones. Anything pulled
+      # but not running goes, and has to be re-pulled next time it is wanted.
+      ansible.builtin.command:
+        argv: [docker, system, prune, -af]
+      register: docker_prune
+      changed_when: "'Total reclaimed space: 0B' not in docker_prune.stdout"
+
+    - name: Report what the prune reclaimed
+      ansible.builtin.debug:
+        msg: "{{ docker_prune.stdout_lines | select('search', 'Total reclaimed') | list }}"

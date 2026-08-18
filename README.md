@@ -49,6 +49,7 @@ non-builtin collections the roles depend on (Docker container management,
 | `configure_borgmatic_warrig.yml` | warrig + gastown | warrig's counterpart to `configure_borgmatic_citadel.yml`: installs borgmatic, renders config + hook scripts (adopting a previously hand-managed `/etc/borgmatic/config.yaml`), generates an SSH key, authorizes it on gastown, and schedules the daily 04:00 push. First run must be `--check --diff`. See `roles/borgmatic_warrig/README.md`. |
 | `configure_dsm_config_audit.yml` | gastown (Synology) | Drops a read-only DSM config-drift export script in `nux`'s home and pins the Windmill runner's SSH key to it with a forced `command=`, so a nightly Windmill flow can snapshot config-drift surfaces. See `roles/dsm_config_audit/README.md`. |
 | `prune_docker.yml` | Raspberry Pis | One-shot `docker system prune` covering containers, non-dangling images, networks, volumes, and builder cache. |
+| `update_docker_images.yml` | warrig + citadel + the three Pis (any subset via `-e docker_update_target=`) | **DESTRUCTIVE.** One-shot `watchtower --run-once` to pull newer digests for every running container's current tag and recreate what moved, then `docker system prune -af`. Runs unescalated as the `docker`-group user; no become key needed. gastown is excluded and must stay excluded (no `docker` on PATH, no socket). Read the header comment before running it: 71 of the 90 containers in scope are loki-logged, and Semaphore itself is one of them. |
 | `upgrade_raspberrypi.yml` | Raspberry Pis | Serial Debian point-release upgrade: backs up state, rewrites apt sources to the next release, runs the upgrade, makes sure networking comes back, reboots, and verifies. Driven by a `release_map` in `roles/dist_upgrade/vars/`. |
 | `configure_pwnbox.yml` | localhost | PwnBox bootstrap: installs the `package_list` from `common`, then clones dotfiles, stows them, and installs Starship + Atuin. |
 | `pull/local.yml` | Raspberry Pis (via `ansible-pull`) | ansible-pull entrypoint importing the six Pi-relevant playbooks (node_exporter, cadvisor, docker log rotation, ufw, ntfy_client, backup_targets) in one shot. See "Pull mode (future)" below. |
@@ -95,6 +96,15 @@ box. Note that box is friction, not enforcement: Semaphore requires a
 non-empty value but does not validate it, and the playbook ignores the
 variable entirely.
 
+`update_docker_images.yml` also has one, also marked DESTRUCTIVE, with the same
+kind of acknowledgement box and the same caveat about it being friction rather
+than enforcement. It is the one template whose blast radius is decided by
+something other than this repo: Watchtower picks what to recreate, so what a
+run does depends on what registries have published since the last one. Its
+`hosts:` default covers all five docker hosts; narrow it with
+`--extra-vars docker_update_target=` exactly as with the log-rotation
+templates, not with a Limit field.
+
 `configure_docker_log_rotation.yml` needs one template per target, because its
 `hosts:` is `{{ docker_daemon_target | default('raspberrypis') }}` and
 `--limit` can only narrow a pattern, never widen it. There are three: the Pi
@@ -114,14 +124,21 @@ citadel and warrig have no passwordless sudo, so any play with `become` needs
 a Become key on the Semaphore inventory. The Pis and gastown do not need it
 (gastown sets `ansible_become: false`).
 
-**That key does not exist yet, and it is the one thing blocking Semaphore from
-running most of this.** Inventory `lab-hosts` has `become_key_id: null`, and
-the symptom is a run that succeeds on the Pis and fails on the two Arch hosts
-with `Missing sudo password`. Confirmed against a real task log, not inferred.
-Create a `login_password` credential holding the sudo password and set it as
-the inventory's Become key.
+**That key now exists.** Checked against the API on 2026-08-18: inventory
+`lab-hosts` carries `become_key_id: 38`, the `lab sudo (warrig + citadel)`
+`login_password` credential. This paragraph previously said the key was
+missing and was the one thing blocking Semaphore; that was true when written
+and is not any more. The symptom it describes, a run that succeeds on the Pis
+and fails on the two Arch hosts with `Missing sudo password`, is what to look
+for if the key is ever unset again.
 
-Until then these templates fail on citadel and warrig: node_exporter,
+`update_docker_images.yml` never needed it either way: it runs unescalated as
+the `docker`-group user. Note that `become: false` at play level would NOT
+have achieved that, because an inventory `ansible_become` outranks the play
+keyword; it sets `ansible_become: false` as a play var instead, which does
+outrank host_vars.
+
+Before that key was added these templates failed on citadel and warrig: node_exporter,
 firewalld, backup_targets, ntfy_client, both borgmatic templates, cAdvisor
 (warrig only), and the two per-host docker log rotation ones. This predates
 warrig gaining `ansible_become: true`; citadel was already affected. The
