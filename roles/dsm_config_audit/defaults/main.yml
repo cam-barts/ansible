@@ -1,8 +1,8 @@
 ---
-# dsm_config_audit — read-only DSM config-drift snapshot for the Windmill pull.
+# dsm_config_audit: read-only DSM config-drift snapshot for the Windmill pull.
 #
 # This role does TWO things on gastown, both as the unprivileged `nux` account
-# (no sudo on gastown — see inventory/host_vars/gastown.yml):
+# (no sudo on gastown: see inventory/host_vars/gastown.yml):
 #   1. drops `synocfg-export.sh` into nux's home, and
 #   2. pins the Windmill runner's public key in nux's authorized_keys with a
 #      forced `command=` so that key can ONLY run the export script.
@@ -24,7 +24,7 @@ dsm_audit_authorized_keys_path: "/var/services/homes/{{ dsm_audit_runner_user }}
 # --- Windmill runner public key ------------------------------------------
 # The PUBLIC key Windmill presents when it SSHes in to run the export. The
 # real value belongs in inventory/group_vars/synology/vault.yml as
-# `vault_dsm_audit_windmill_pubkey` and is referenced from vars.yml — same
+# `vault_dsm_audit_windmill_pubkey` and is referenced from vars.yml, same
 # pattern as rsnapshot_ntfy_topic. This sentinel makes an unconfigured run
 # fail loudly (see the assert in tasks/main.yml) instead of installing a
 # bogus key.

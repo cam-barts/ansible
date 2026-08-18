@@ -1,4 +1,12 @@
 ---
+# Every other host in this inventory sets ansible_become explicitly (citadel,
+# the three Pis and pwnbox true, gastown false). warrig was the only one
+# missing it, which went unnoticed because every playbook that touches warrig
+# sets `become: true` at play level. roles/ntfy_client did not, so
+# configure_ntfy_client.yml failed on warrig alone with a permission denied on
+# /root/.config while succeeding on citadel. Added 2026-08-18.
+ansible_become: true
+
 # Read off the live host 2026-08-17; verified byte-equivalent to
 # /etc/docker/daemon.json by the adversarial review pass. Deliberate
 # divergence from citadel: warrig ships loki over the network, so small
@@ -22,11 +30,20 @@ docker_daemon_config:
       args: []
       path: nvidia-container-runtime
 
-# cadvisor fold-in vars — inert until warrig joins [cadvisor:children].
-# Values match the live container (roles/cadvisor/README.md), so first
-# apply is a no-op and no loki-recreate is attempted. boot_fix adopts the
-# hand-written cadvisor-boot-fix.service already enabled on this host.
+# cadvisor. warrig runs it in the HOST network namespace rather than with a
+# published port, so cAdvisor binds 8080 as an ordinary host listener and
+# firewalld's rich rule can scope it to citadel. A published port bypasses
+# firewalld through Docker's own chains, which left 8080 open to the whole
+# LAN (measured 2026-08-17). See roles/cadvisor/README.md.
+#
+# Switching an existing container to host mode is a recreate, and warrig runs
+# the loki log driver, so the one-time cutover needs the guard lifted:
+#   -e cadvisor_allow_recreate=true
+# Leave it out of this file so the guard stays armed for every later run.
+# Order matters: apply roles/firewalld FIRST (its 8080 rule is inert until
+# the switch), then cut over, or Prometheus loses warrig cadvisor in between.
 cadvisor_memory: "512m"
 cadvisor_docker_only: false
-cadvisor_publish_host_ip: ""
+cadvisor_network_mode: host
+cadvisor_publish_port: false
 cadvisor_boot_fix: true

@@ -4,7 +4,7 @@
 #
 # Idempotency: `to_nice_json` sorts keys and indents 4, so a host whose live
 # file was written by hand in another style shows a formatting-only diff on the
-# first apply even when the JSON content is unchanged. That is expected — read
+# first apply even when the JSON content is unchanged. That is expected, read
 # the diff, confirm it is only whitespace/ordering, then apply.
 
 - name: Read existing daemon.json
@@ -35,7 +35,7 @@
       daemon.json changed on {{ inventory_hostname }} but docker was NOT
       restarted (docker_daemon_allow_restart is false). The new daemon settings
       are inert until someone runs `sudo systemctl restart docker` at a moment
-      of their choosing — on loki-logging hosts this is deliberate, see
+      of their choosing, on loki-logging hosts this is deliberate, see
       roles/docker_log_rotation/README.md.
   when:
     - docker_daemon_write.changed

@@ -1,4 +1,4 @@
 ---
-# Dependency only; galaxy_info dropped — this role is never published.
+# Dependency only; galaxy_info dropped: this role is never published.
 dependencies:
   - role: ntfy_client

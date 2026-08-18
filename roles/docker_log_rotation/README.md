@@ -1,12 +1,12 @@
 # docker_log_rotation
 
-Manages **the whole of `/etc/docker/daemon.json`**, not just the log stanza.
+Manages the whole of `/etc/docker/daemon.json`, not just the log stanza.
 
 The name is a leftover from when it only set `log-driver: json-file` with a
-10m×3 cap. It is kept on purpose — renaming to `docker_daemon` would churn
+10m×3 cap. It is kept on purpose: renaming to `docker_daemon` would churn
 `playbooks/configure_docker_log_rotation.yml`, the top-level README and any
-inventory references, in exchange for nothing. Read "log rotation" as "the
-reason the role was born", not "the limit of what it does".
+inventory references, in exchange for nothing. Read "log rotation" as the
+reason the role was born, not the limit of what it does.
 
 ## How it works
 
@@ -27,15 +27,29 @@ docker_daemon_config:
 ### First-apply diffs are expected
 
 `to_nice_json` sorts keys and indents with 4 spaces. A host whose live
-`daemon.json` was hand-written in another style shows a **formatting-only**
-diff on first apply even though the JSON content is identical. Read the diff,
-confirm nothing semantic moved, then apply. Observed 2026-08-17:
+`daemon.json` was hand-written in another style shows a formatting-only diff on
+first apply even though the JSON content is identical. Read the diff, confirm
+nothing semantic moved, then apply. Observed 2026-08-17:
 
-- **warrig** — live file is already 4-space, key-sorted (it looks to have been
-  written by this role at some point) and has **no trailing newline**. Expect a
-  one-byte diff.
-- **citadel** — live file is 2-space and unsorted. Expect a whole-file
-  reformat with no content change.
+- warrig: the live file is already 4-space and key-sorted (it looks to have
+  been written by this role at some point) and has no trailing newline. Expect
+  a one-byte diff.
+- citadel: the live file is 2-space and unsorted. Expect a whole-file reformat
+  with no content change.
+
+Applied 2026-08-18, and the prediction held. Both hosts reported exactly one
+changed task and the handler skipped, as designed. Verified afterwards that it
+was cosmetic on both, three ways: the on-disk JSON now parses equal to the
+`docker_daemon_config` in host_vars, no unmanaged keys were dropped, and
+`docker info` still agrees with the file on `LoggingDriver` and
+`DockerRootDir`. So there is no pending behaviour change waiting on a restart,
+and the "dockerd needs a manual restart" warning, while correct that the write
+happened, had nothing semantic behind it in this instance.
+
+That distinction is the thing to check on any future `changed` here. The
+warning fires on any write at all, so it cannot by itself tell you whether a
+restart would change how dockerd behaves. Compare the parsed file against
+host_vars and against `docker info` before deciding to restart a loki host.
 
 ## Per-host config
 
@@ -105,7 +119,7 @@ sudo systemctl restart docker
 Set `-e docker_daemon_allow_restart=true` only on hosts where an automatic
 bounce is genuinely safe (json-file Pis with nothing critical running).
 
-Separately: log-driver and log-opts changes only affect **newly created**
+Separately: log-driver and log-opts changes only affect newly created
 containers regardless of restarts. Existing ones need
 `docker compose up -d --force-recreate`.
 
@@ -118,10 +132,36 @@ ansible-playbook \
 
 # One other host, once its host_vars exist
 ansible-playbook -e docker_daemon_target=warrig \
-    -e docker_daemon_target=warrig \
     playbooks/configure_docker_log_rotation.yml
 ```
 
-`docker_daemon_target` defaults to `raspberrypis` — it exists because adding a
+`docker_daemon_target` defaults to `raspberrypis`. It exists because adding a
 group for the Arch docker hosts means editing inventory, which is a separate
 change.
+
+### `--limit` cannot substitute for `docker_daemon_target`
+
+This one is worth knowing because it fails silently rather than loudly. The
+playbook's `hosts:` is `{{ docker_daemon_target | default('raspberrypis') }}`,
+and `--limit` can only narrow a host pattern, never widen it. So:
+
+```sh
+# WRONG: intersects warrig with raspberrypis, matches nothing.
+# Exits 0 with no recap line for any host. Looks like a pass.
+ansible-playbook --limit warrig playbooks/configure_docker_log_rotation.yml
+
+# RIGHT
+ansible-playbook -e docker_daemon_target=warrig \
+    playbooks/configure_docker_log_rotation.yml
+```
+
+The wrong form cost a real verification miss on 2026-08-18: two separate sweeps
+"passed" it against warrig and citadel without ever touching either host. An
+`rc=0` with no host recap is the tell.
+
+## Upstream
+
+Configures the [Docker Engine](https://github.com/moby/moby) daemon
+(Apache-2.0) via `/etc/docker/daemon.json`. On warrig and citadel the
+configured driver is the [Grafana Loki Docker driver plugin](https://github.com/grafana/loki)
+(AGPL-3.0). This role writes configuration only; it installs neither.

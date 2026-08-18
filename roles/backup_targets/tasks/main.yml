@@ -3,11 +3,15 @@
 # cache_valid_time is apt-only and update_cache semantics differ between
 # the two modules, so a single smart-module call can't express both.
 
+# changed_when: false for the same reason as the pacman sync below. apt
+# reports changed whenever it actually refreshes, which cache_valid_time
+# delays to once an hour rather than preventing.
 - name: Update apt cache (Debian family)
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
   become: true
+  changed_when: false
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Install backup-target packages (Debian family)
@@ -17,10 +21,14 @@
   become: true
   when: ansible_facts['os_family'] == "Debian"
 
+# changed_when: false because pacman reports `changed` on every db refresh,
+# which would make this task permanently noisy without ever indicating that
+# anything on the host actually changed.
 - name: Sync pacman package db (Archlinux family)
   community.general.pacman:
     update_cache: true
   become: true
+  changed_when: false
   when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Install backup-target packages (Archlinux family)

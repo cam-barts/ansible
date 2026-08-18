@@ -1,7 +1,7 @@
 ---
 # Packages that every gastown-rsnapshot source host should have. Currently
 # just rsync (gastown pulls via rsync-over-ssh; the binary must exist on
-# the remote side). Designed to grow — any tooling that genuinely belongs
+# the remote side). Designed to grow: any tooling that genuinely belongs
 # on EVERY backup target lives here, not in per-host roles.
 #
 # rsync was previously installed by `pi_common` (apt-only); 2026-05-13 the

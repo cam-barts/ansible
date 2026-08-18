@@ -11,7 +11,7 @@
 #     dump or a failure marker. Keep the DB name list there in sync with the
 #     dump calls below.
 #   * The test_<uuid> race (BunkerWeb creates/drops ephemeral tables while
-#     mariadb-dump walks the table list — the Jun 25 / Jul 12 misfires) is
+#     mariadb-dump walks the table list, the Jun 25 / Jul 12 misfires) is
 #     closed STRUCTURALLY: mariadb-dump is handed an explicit table list with
 #     test_<32hex> names filtered out, so a test table appearing mid-dump is
 #     never referenced. The retry below is therefore NOT for that race; it is
@@ -23,7 +23,7 @@
 #     against a wedged docker CLI and MUST stay larger than the inner one.
 #   * A dump is promoted only if it is non-empty AND ends with its expected
 #     terminator, so a truncated-but-exit-0 dump can't masquerade as good.
-#   * Dumps land atomically (mv from .partial) — never a torn dump.
+#   * Dumps land atomically (mv from .partial), never a torn dump.
 #   * A persistently failed dump alerts via ntfy at {{ borgmatic_ntfy_priority_degraded }} (bypasses DND, as
 #     the old whole-backup failure did) and drops a DUMP-FAILED-<name>.txt
 #     marker that PERSISTS on disk until that DB dumps successfully, so a
@@ -50,7 +50,7 @@ failed=""
 if ! mkdir -p "$dumpdir"; then
     "$ntfy" publish -t 'Borg DB dump FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_degraded }} \
         --tags=backup,citadel,warning "$topic" \
-        "cannot create $dumpdir — filesystem backup continuing with NO fresh DB dumps" \
+        "cannot create $dumpdir, filesystem backup continuing with NO fresh DB dumps" \
         >/dev/null || true
     exit 0
 fi
@@ -58,7 +58,7 @@ chmod 700 "$dumpdir"
 
 # Serialise. Without this, a hand-run (`sudo borgmatic-run.sh` to debug last
 # night) overlapping the {{ '%02d' % borgmatic_cron_hour }}:{{ '%02d' % borgmatic_cron_minute }} cron would have its start-time rm below delete
-# the completed dumps of the run already in progress — silently, since that
+# the completed dumps of the run already in progress, silently, since that
 # run's dump script has already cleared its markers.
 exec 9>"$dumpdir/.lock"
 flock -n 9 || {
@@ -112,7 +112,7 @@ dump {{ db.name }} {{ db.dump_file }} \
 if [ -n "$failed" ]; then
     "$ntfy" publish -t 'Borg DB dump FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_degraded }} \
         --tags=backup,citadel,warning "$topic" \
-        "DB dump(s) failed:$failed — filesystem backup continues WITHOUT fresh dump(s); see /var/log/borgmatic.log" \
+        "DB dump(s) failed:$failed, filesystem backup continues WITHOUT fresh dump(s); see /var/log/borgmatic.log" \
         >/dev/null || true
 fi
 

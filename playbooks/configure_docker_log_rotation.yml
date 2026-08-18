@@ -1,6 +1,6 @@
 ---
 # The docker_log_rotation role now manages the whole of /etc/docker/daemon.json
-# (name kept to avoid churning references — see the role README). Default
+# (name kept to avoid churning references: see the role README). Default
 # target stays the Pis, whose json-file 10m x 3 config is unchanged.
 #
 # `docker_daemon_target` lets a single host be targeted without adding an

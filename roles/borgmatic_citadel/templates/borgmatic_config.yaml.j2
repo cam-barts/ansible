@@ -1,7 +1,7 @@
 # {{ ansible_managed }}
 # borgmatic config for citadel → gastown push. Rendered by Ansible role
-# borgmatic_citadel. Edit the role defaults/host_vars, not this file directly
-# — next playbook run will clobber hand edits.
+# borgmatic_citadel. Edit the role defaults/host_vars, not this file directly:
+# the next playbook run will clobber hand edits.
 #
 # Both the repo init and the daily run are driven by the role; this comment
 # block is kept for hand-debugging only:
@@ -68,8 +68,8 @@ checks:
 #
 # The trailing "|| true" is the load-bearing bit: a DB-dump stumble must never
 # abort the filesystem backup. borgmatic aborts the run if ANY before-hook
-# command exits non-zero — including 126/127 if a script goes missing or
-# loses its exec bit — so the guarantee lives here at the config level rather
+# command exits non-zero, including 126/127 if a script goes missing or
+# loses its exec bit, so the guarantee lives here at the config level rather
 # than depending on every script staying well-behaved forever. A failed dump
 # still alerts (ntfy) and leaves a DUMP-FAILED marker; see
 # borgmatic-dump-dbs.sh.
@@ -87,10 +87,10 @@ commands:
 
     # ntfy on error. Named priorities, single [redacted-vaulted-topic] topic, distinct
     # titles from warrig's so the two streams are visually separable.
-    # The "when:" list mirrors what on_error normalized to — without it the
+    # The "when:" list mirrors what on_error normalized to, without it the
     # hook would also fire for interactive list/info/mount failures and page
     # Cam at {{ borgmatic_ntfy_priority_fail }} priority for a typo'd archive name.
     - after: error
       when: [create, prune, compact, check]
       run:
-          - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see {{ borgmatic_log_path }}'"
+          - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed, see {{ borgmatic_log_path }}'"

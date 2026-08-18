@@ -15,7 +15,7 @@ set -u
 OUT="{{ borgmatic_system_state_dir }}"
 mkdir -p "$OUT"
 
-# 1. Explicit packages — the "wanted" set. Restore path:
+# 1. Explicit packages: the "wanted" set. Restore path:
 #    paru -S --needed - < packages-explicit.txt
 pacman -Qqe   > "$OUT/packages-explicit.txt"  2>/dev/null || true
 
@@ -23,23 +23,23 @@ pacman -Qqe   > "$OUT/packages-explicit.txt"  2>/dev/null || true
 #    list, not necessarily a one-shot installable.
 pacman -Qqm   > "$OUT/packages-foreign.txt"   2>/dev/null || true
 
-# 3. Orphans — deps with no parent. A sudden spike usually means something
+# 3. Orphans: deps with no parent. A sudden spike usually means something
 #    got uninstalled accidentally.
 pacman -Qqdt  > "$OUT/packages-orphans.txt"   2>/dev/null || true
 
-# 4. Full metadata — version, install date, packager. Bigger, less
+# 4. Full metadata: version, install date, packager. Bigger, less
 #    diff-clean, but lets the rehearsal answer "what version was this on
 #    the day before the failure?" without trawling borg.
 pacman -Qi    > "$OUT/packages-info.txt"      2>/dev/null || true
 
-# 5. Pacman / paru config — repo state and mirror selection.
+# 5. Pacman / paru config: repo state and mirror selection.
 cp /etc/pacman.conf            "$OUT/pacman.conf"            2>/dev/null || true
 cp /etc/pacman.d/mirrorlist    "$OUT/mirrorlist"             2>/dev/null || true
 
-# 6. fstab — curated copy alongside the package lists.
+# 6. fstab: curated copy alongside the package lists.
 cp /etc/fstab                  "$OUT/fstab"                  2>/dev/null || true
 
-# 7. Enabled systemd units — catches "this service was enabled but
+# 7. Enabled systemd units: catches "this service was enabled but
 #    Ansible didn't know about it".
 systemctl list-unit-files --state=enabled --no-legend \
                               > "$OUT/enabled-units.txt"     2>/dev/null || true

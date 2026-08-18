@@ -1,8 +1,12 @@
+# A cache refresh is not a change to the host. apt reports changed whenever it
+# actually refreshes, which cache_valid_time delays to once an hour rather than
+# preventing, so a scheduled run would report a change that never happened.
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
   become: true
+  changed_when: false
 
 - name: Install common packages
   ansible.builtin.apt:

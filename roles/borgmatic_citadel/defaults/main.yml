@@ -31,7 +31,7 @@ borgmatic_init_marker: "{{ borgmatic_state_dir }}/.initialized"
 # it rides in the home-dir backup source. Populated by before_backup_command.
 borgmatic_system_state_dir: /home/nux/.system-state
 
-# Schedule. Daily 03:00 — offset from warrig's 04:00 so gastown isn't
+# Schedule. Daily 03:00, offset from warrig's 04:00 so gastown isn't
 # servicing two concurrent borg pushes.
 borgmatic_cron_hour: 3
 borgmatic_cron_minute: 0
@@ -70,34 +70,34 @@ borgmatic_excludes:
   - "*/.local/share/Trash/*"
   - "*/tmp/*"
   - "*/.tmp/*"
-  # Garage object data + metadata — S3 has internal replication, config is
+  # Garage object data + metadata: S3 has internal replication, config is
   # what's worth backing up. Container compose dir itself stays included.
   - "/home/nux/docker/garage/data/*"
   - "/home/nux/docker/garage/meta/*"
-  # Loki / Prometheus / Grafana on-disk TSDB chunks — large, derivable from
+  # Loki / Prometheus / Grafana on-disk TSDB chunks, large, derivable from
   # configured scrape targets; backing up config dirs is enough.
   - "/home/nux/docker/monitoring/data/loki/*"
   - "/home/nux/docker/monitoring/data/prometheus/*"
   - "/home/nux/docker/monitoring/data/grafana/grafana.db-journal"
-  # changedetection screenshot snapshots — regenerable
+  # changedetection screenshot snapshots: regenerable
   - "/home/nux/docker/changedetection/datastore/Browserless/*"
 
-# Compression — matches warrig.
+# Compression: matches warrig.
 borgmatic_compression: "zstd,10"
 
-# Retention — matches warrig.
+# Retention: matches warrig.
 borgmatic_keep_daily: 7
 borgmatic_keep_weekly: 4
 borgmatic_keep_monthly: 6
 borgmatic_keep_yearly: 1
 
-# Consistency checks — matches warrig.
+# Consistency checks: matches warrig.
 borgmatic_consistency_checks:
   - { name: data, frequency: "2 weeks" }
   - { name: extract, frequency: "1 month" }
 
 # ntfy. Single topic [redacted-vaulted-topic]. Named priorities (default/urgent) per
-# Cam's strategy-doc refactor note — no numeric -p N here.
+# Cam's strategy-doc refactor note: no numeric -p N here.
 borgmatic_ntfy_bin: /usr/bin/ntfy
 borgmatic_ntfy_topic: [redacted-vaulted-topic]
 borgmatic_ntfy_priority_start: min
@@ -115,7 +115,7 @@ borgmatic_dump_dir: /var/backups/borgmatic-dumps
 # Dump resilience: attempts per DB and seconds between attempts. A dump that
 # fails all attempts alerts via ntfy but never aborts the filesystem backup.
 # The test_<uuid> race is closed structurally by the table filter below, so
-# the retry only covers brief container blips — hence few attempts, far apart.
+# the retry only covers brief container blips, hence few attempts, far apart.
 borgmatic_dump_attempts: 2
 borgmatic_dump_retry_delay: 30
 # Split timeout. The INNER timeout(1) runs inside the container and is what
@@ -123,7 +123,7 @@ borgmatic_dump_retry_delay: 30
 # backstop against a wedged docker client. Outer MUST stay > inner, else the
 # CLI is killed while the dump keeps running server-side and a retry stacks a
 # second dump on the first. Worst-case before-hook stall is
-# attempts x inner + retry_delay, per DB — keep the total clear of warrig's
+# attempts x inner + retry_delay, per DB. Keep the total clear of warrig's
 # 04:00 push to the same gastown target.
 borgmatic_dump_timeout_inner: 570
 borgmatic_dump_timeout_outer: 600
@@ -132,13 +132,13 @@ borgmatic_dump_timeout_outer: 600
 # skip DB dumping entirely.
 #
 # Per entry:
-#   name             — also the DUMP-FAILED-<name>.txt marker suffix, and the
+#   name            : also the DUMP-FAILED-<name>.txt marker suffix, and the
 #                      key borgmatic-cleanup-dumps.sh asserts on (it expects
 #                      "<name>-all.sql", so keep dump_file in that shape).
-#   terminator       — string the tail of a complete dump must contain. This
+#   terminator      : string the tail of a complete dump must contain. This
 #                      is what makes a truncated-but-exit-0 dump fail instead
 #                      of being promoted.
-#   dump_invocation  — the full command, rendered verbatim as the argv handed
+#   dump_invocation : the full command, rendered verbatim as the argv handed
 #                      to the script's dump() helper. It references the shell
 #                      vars $outer_timeout / $inner_timeout defined in the
 #                      script from borgmatic_dump_timeout_{outer,inner}, so
@@ -147,10 +147,10 @@ borgmatic_dump_timeout_outer: 600
 borgmatic_databases:
   - name: windmill-postgres
     dump_file: "windmill-postgres-all.sql"
-    # pg_dumpall's CLUSTER terminator, not the per-database one — see comment.
+    # pg_dumpall's CLUSTER terminator, not the per-database one, see comment.
     terminator: "PostgreSQL database cluster dump complete"
     dump_comment: |-
-      # Terminator note: pg_dumpall's CLUSTER terminator is used deliberately — the
+      # Terminator note: pg_dumpall's CLUSTER terminator is used deliberately, the
       # per-database "PostgreSQL database dump complete" appears once per DB and
       # would still match a dump truncated between databases.
     dump_invocation: |-
@@ -163,12 +163,12 @@ borgmatic_databases:
     # MYSQL_PASSWORD is in the container env (compose-injected). The table
     # list is enumerated live with BunkerWeb's ephemeral test tables (test_ +
     # exactly 32 hex chars, see bunkerweb db/Database.py uuid4().hex) filtered
-    # out, so a test table created/dropped mid-dump is never referenced —
+    # out, so a test table created/dropped mid-dump is never referenced. That
     # closes the Jun 25 / Jul 12 dump race structurally. The pattern is exact
     # so a future real test_* table would still be dumped. An empty list (SHOW
     # TABLES failed) falls through as a failure and gets retried.
     dump_comment: |-
-      # $tables is deliberately unquoted below — mariadb-dump takes the table list
+      # $tables is deliberately unquoted below: mariadb-dump takes the table list
       # as separate argv entries, so word splitting is required. Safe here: the
       # schema is a fixed set of bw_* names with no spaces or glob characters.
     dump_invocation: |-

@@ -11,11 +11,15 @@
 # hosts elsewhere in the repo); when run via ansible-pull on a Pi, the
 # `-i inventory/` + the pulling host's own hostname naturally limits `all`
 # down to that one host, so no `--limit` is needed here. Not modifying that
-# playbook — out of scope for pull/.
+# playbook: out of scope for pull/.
 #
-# The `stable` branch convention (`-C stable`) and the systemd timer units
-# that will schedule this on a cadence are future phases, not implemented
-# yet.
+# NOT USABLE YET. Verified 2026-08-18: none of the three Pis has ansible-pull
+# installed (they have git, nothing else), and the `stable` branch this is
+# meant to track exists locally but was never pushed, so `-C stable` fails at
+# clone. The systemd timer that would schedule it is a third missing piece.
+# See "Pull mode (not usable yet)" in the top-level README before relying on
+# any of this. The file itself is sound: it passes --syntax-check and every
+# playbook it imports runs regularly in push mode.
 
 - name: Import node_exporter deployment
   ansible.builtin.import_playbook: ../playbooks/deploy_node_exporter.yml

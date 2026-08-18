@@ -24,19 +24,21 @@ warrig's 04:00 so gastown isn't servicing two concurrent receivers).
    repo. Idempotent: `borgmatic info` probes first, and a marker file at
    `/var/lib/borgmatic/.initialized` guards the second run.
 7. Installs four scripts under `/usr/local/bin/`:
-   - `borgmatic-run.sh` — cron entry-point with explicit start/ok/fail ntfy chain.
-   - `borgmatic-dump-dbs.sh` — `before: action` hook; `docker exec` pg_dumpall
-     + mariadb-dump into `/var/backups/borgmatic-dumps/`. Serialised with
-     `flock` on the dump dir, `umask 077`, split inner/outer `timeout`, and a
-     terminator check so a truncated dump is never promoted. Always exits 0.
-   - `borgmatic-cleanup-dumps.sh` — `after: action` hook; wipes the dump dir on
-     both success and failure, and asserts each DB left either a dump or a
-     `DUMP-FAILED-<name>.txt` marker (catches a dump script that never ran).
-   - `borgmatic-export-system-state.sh` — `before: action` hook; captures pacman
-     state, pacman/mirror config, fstab, enabled units and host identity into
-     `~/.system-state` so a restore can replay the host. Supersedes the older
-     `borgmatic-export-pkglists.sh`, which the role removes.
-8. Installs a root cron entry: daily 03:00 → `borgmatic-run.sh`, logging to
+   - `borgmatic-run.sh`, the cron entry-point with an explicit start/ok/fail
+     ntfy chain.
+   - `borgmatic-dump-dbs.sh`, a `before: action` hook that `docker exec`s
+     pg_dumpall and mariadb-dump into `/var/backups/borgmatic-dumps/`.
+     Serialised with `flock` on the dump dir, `umask 077`, split inner/outer
+     `timeout`, and a terminator check so a truncated dump is never promoted.
+     Always exits 0.
+   - `borgmatic-cleanup-dumps.sh`, an `after: action` hook that wipes the dump
+     dir on both success and failure, and asserts each DB left either a dump or
+     a `DUMP-FAILED-<name>.txt` marker (catches a dump script that never ran).
+   - `borgmatic-export-system-state.sh`, a `before: action` hook that captures
+     pacman state, pacman/mirror config, fstab, enabled units and host identity
+     into `~/.system-state` so a restore can replay the host. Supersedes the
+     older `borgmatic-export-pkglists.sh`, which the role removes.
+8. Installs a root cron entry: daily 03:00 runs `borgmatic-run.sh`, logging to
    `/var/log/borgmatic.log`.
 
 The role does NOT trigger a first manual `borgmatic create`. The first
@@ -67,13 +69,13 @@ borgmatic_databases:  # what to dump via docker exec
 ```
 
 `dump_invocation` is rendered verbatim as the argv handed to the script's
-`dump()` helper and references `$outer_timeout` / `$inner_timeout`, which come
+`dump()` helper and references `$outer_timeout` and `$inner_timeout`, which come
 from `borgmatic_dump_timeout_outer` (wraps `docker`, backstop for a wedged CLI)
 and `borgmatic_dump_timeout_inner` (runs inside the container, actually bounds
 the dump). Outer must stay larger than inner.
 
 Excluded by default: caches, node_modules, venvs, Garage object/meta data
-(S3 has internal replication — config is what's worth backing up), Loki +
+(S3 has internal replication, so config is what's worth backing up), Loki and
 Prometheus TSDB chunks (derivable), changedetection browser snapshots.
 
 ## Before first apply (one-time)
@@ -87,8 +89,8 @@ ansible-vault create inventory/group_vars/borgmatic_source/vault.yml
 #   vault_borgmatic_passphrase: <strong passphrase>
 ```
 
-Stash a copy in KeePassXC at the same time — losing the passphrase makes the
-archives unrecoverable. (Same hygiene as warrig.)
+Stash a copy in KeePassXC at the same time. Losing the passphrase makes the
+archives unrecoverable. Same hygiene as warrig.
 
 The `.vault_pass` file in the repo root (per `ansible.cfg`) decrypts it at
 playbook run time.
@@ -117,8 +119,16 @@ running from elsewhere.
 ## Not handled here
 
 - The gastown rsnapshot tier (separate `rsnapshot_gastown` role).
-- Off-site / firebox-USB tier (Phase 2 in the strategy doc).
-- Reconciling the exclude list against warrig's live config — this role's
+- Off-site and firebox-USB tier (Phase 2 in the strategy doc).
+- Reconciling the exclude list against warrig's live config. This role's
   default list is the documented best-practice pattern plus citadel-specific
   Garage/Loki/Prom entries. If `sudo cat /etc/borgmatic/config.yaml` on
   warrig has extra entries not captured here, fold them in.
+
+## Upstream
+
+Automates [borgmatic](https://torsion.org/borgmatic/) (GPL-3.0-or-later), a
+configuration frontend for [BorgBackup](https://www.borgbackup.org/)
+(BSD-3-Clause). Notifications go through [ntfy](https://github.com/binwiederhier/ntfy)
+(Apache-2.0 or GPL-2.0). This role installs and configures them from the
+distro packages; no upstream code is vendored here.

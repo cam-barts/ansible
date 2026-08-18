@@ -1,9 +1,14 @@
+# changed_when: false for the same reason as the pacman refresh below. apt
+# reports changed whenever it actually refreshes, which cache_valid_time
+# delays to once an hour rather than preventing, so any scheduled run past
+# that hour reports a change that never happened to the host.
 - name: Update apt cache (ignore errors from broken repos)
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
   become: true
   failed_when: false
+  changed_when: false
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Install node_exporter (Debian/Raspbian)
@@ -13,11 +18,21 @@
   become: true
   when: ansible_facts['os_family'] == "Debian"
 
+# Split from the install: community.general.pacman reports `changed` whenever
+# it refreshes the db, so folding update_cache into the install would make the
+# task report changed on every run forever. A db refresh is not a change to
+# system state.
+- name: Refresh the pacman database (Archlinux)
+  community.general.pacman:
+    update_cache: true
+  become: true
+  changed_when: false
+  when: ansible_facts['os_family'] == "Archlinux"
+
 - name: Install node_exporter (Archlinux)
   community.general.pacman:
     name: prometheus-node-exporter
     state: present
-    update_cache: true
   become: true
   when: ansible_facts['os_family'] == "Archlinux"
 

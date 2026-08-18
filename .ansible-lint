@@ -1,6 +1,6 @@
 ---
 skip_list:
   # Vars are prefixed by domain, not by role name (e.g. borgmatic_* is
-  # shared across borgmatic_citadel/borgmatic_warrig by design) — waived
+  # shared across borgmatic_citadel/borgmatic_warrig by design), waived
   # deliberately, not an oversight.
   - var-naming[no-role-prefix]

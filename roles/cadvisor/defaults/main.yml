@@ -21,17 +21,33 @@ cadvisor_port: 8080
 
 # Host IP the published port binds to. Containers this role created record
 # 0.0.0.0; ones created by hand with `docker run -p 8080:8080` record an empty
-# host IP, and the module counts that as a difference — i.e. a recreate. Set
+# host IP, and the module counts that as a difference, i.e. a recreate. Set
 # this to "" in host_vars for such hosts (warrig) to leave the binding alone.
 cadvisor_publish_host_ip: "0.0.0.0"
 
 # --docker_only limits cAdvisor to docker cgroups instead of every system
-# cgroup — meaningfully lighter on weak CPUs (the Pis).
+# cgroup: meaningfully lighter on weak CPUs (the Pis).
 cadvisor_docker_only: true
 
 # Extra docker networks to attach (list of {name: ...}). Empty = default bridge.
 # For citadel: [{name: monitoring_default}] with cadvisor_publish_port: false.
 cadvisor_networks: []
+
+# Network mode. Empty means docker's default bridge, with the published port
+# and cadvisor_networks above. Set to "host" to run cAdvisor in the host
+# network namespace, where it binds cadvisor_port on the host directly.
+#
+# Why that matters: a *published* port is reached through Docker's own
+# iptables chains, which are consulted before firewalld, so firewalld cannot
+# scope it (measured on warrig: 8080 answered the whole LAN while 9100, a
+# host service, was correctly restricted to citadel). In host mode cAdvisor
+# is an ordinary host listener, goes through firewalld's INPUT chain, and the
+# rich rule in roles/firewalld actually applies. warrig uses this.
+#
+# Host mode makes publishing meaningless, so published_ports, default_host_ip
+# and cadvisor_networks are all dropped from the spec when it is set, and
+# --port is passed explicitly so cadvisor_port stays authoritative.
+cadvisor_network_mode: ""
 
 # docker_container recreates (stop -> rm -> create) on ANY config difference.
 # On hosts whose dockerd defaults to the `loki` log driver (warrig, citadel),

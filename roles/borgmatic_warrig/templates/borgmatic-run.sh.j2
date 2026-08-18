@@ -1,6 +1,6 @@
 #!/bin/sh
 # {{ ansible_managed }}
-# borgmatic-run.sh — wrapper for warrig's daily borgmatic invocation.
+# borgmatic-run.sh: wrapper for warrig's daily borgmatic invocation.
 #
 # Same explicit start/ok/fail pattern as citadel's and as rsnapshot-run.sh on
 # gastown: success and failure go through different ntfy paths so a partial
@@ -11,7 +11,7 @@ set -u
 # Serialise the whole run. Without this, a hand-run (`sudo borgmatic-run.sh` to
 # debug last night) overlapping the {{ '%02d' % borgmatic_cron_hour }}:{{ '%02d' % borgmatic_cron_minute }} cron puts two borg processes against
 # the same gastown repo; borg's own repo lock makes one of them fail rather
-# than corrupt anything, but it fails as a *backup failure* ntfy — the wrong
+# than corrupt anything, but it fails as a *backup failure* ntfy, the wrong
 # signal. Exit silently: the run already in progress owns the notifications.
 exec 9>/var/lock/borgmatic-run.lock
 flock -n 9 || {
@@ -30,7 +30,7 @@ config="{{ borgmatic_config_path }}"
     "$topic" \
     "warrig→gastown borg push started" >/dev/null 2>&1 || true
 
-if /usr/bin/borgmatic --config "$config"; then
+if /usr/bin/borgmatic --config "$config" {{ borgmatic_run_flags }}; then
     "$ntfy" publish \
         -t "Borg Backup OK (Warrig)" \
         -p {{ borgmatic_ntfy_priority_ok }} \
@@ -45,6 +45,6 @@ else
         -p {{ borgmatic_ntfy_priority_fail }} \
         --tags=backup,warrig,warning \
         "$topic" \
-        "warrig→gastown borg push exited $rc — see {{ borgmatic_log_path }}" >/dev/null 2>&1 || true
+        "warrig→gastown borg push exited $rc, see {{ borgmatic_log_path }}" >/dev/null 2>&1 || true
     exit "$rc"
 fi

@@ -32,7 +32,7 @@ clients:
 scrape_configs:
 
   # =========================================================================
-  # 1. Docker container logs — automatic discovery via Docker socket
+  # 1. Docker container logs: automatic discovery via Docker socket
   # =========================================================================
   - job_name: docker
     docker_sd_configs:
@@ -40,7 +40,7 @@ scrape_configs:
         refresh_interval: 15s
 
     relabel_configs:
-      # "container_name" — matches Alloy's discovery.docker convention
+      # "container_name": matches Alloy's discovery.docker convention
       # (Docker logging driver uses "container" instead, but Alloy is the
       # future so we align with that)
       - source_labels: ['__meta_docker_container_name']
@@ -55,7 +55,7 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
         target_label: compose_service
 
-      # service_name — matches Alloy format
+      # service_name: matches Alloy format
       - source_labels: ['__meta_docker_container_name']
         regex: '/?(.*)'
         target_label: service_name
@@ -82,7 +82,7 @@ scrape_configs:
           level:
 
   # =========================================================================
-  # 2. Host system logs — syslog, auth, kernel, dmesg, dpkg
+  # 2. Host system logs: syslog, auth, kernel, dmesg, dpkg
   # =========================================================================
   - job_name: host-syslog
     static_configs:
@@ -141,7 +141,7 @@ scrape_configs:
           __path__: /var/log/dpkg.log
 
   # =========================================================================
-  # 3. Journal (systemd) — covers services that only log to journald
+  # 3. Journal (systemd): covers services that only log to journald
   # =========================================================================
   # Uncomment the block below if you want journald logs as well.
   # You'll need to add an additional volume mount to docker-compose.yml:

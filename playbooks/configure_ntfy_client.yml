@@ -1,11 +1,33 @@
 ---
 # Apply ntfy_client config to every host that has the ntfy CLI installed
-# or might in the future. Idempotent — safe to re-run.
+# or might in the future. Idempotent: safe to re-run.
 #
 # Hosts without ntfy installed get a harmless config file at /etc/ntfy/
 # that will start being honored as soon as ntfy is installed there.
+#
+# gastown (the only [synology] host) is excluded, for two independent reasons:
+#
+#   1. It cannot work there. nux has no sudo on DSM (ansible_become: false in
+#      host_vars), so /etc/ntfy and /root/.config are both unwritable. Before
+#      2026-08-18 this playbook failed on gastown every single run with
+#      "Operation not permitted: /etc/ntfy".
+#   2. It is not needed there, and as of 2026-08-18 it is not relied on either.
+#      gastown's wrapper runs as root under synoschedtask, and it used to
+#      publish to a bare topic name, which means the only thing pointing it at
+#      the self-hosted server was root's own ntfy config: a file nothing in
+#      this repo manages and nux cannot even read. Lose that file and every
+#      gastown alert silently retargets to the PUBLIC ntfy.sh, under a topic
+#      named after the lab, with no error, because every publish in the
+#      wrapper ends in `|| true`.
+#
+#      Fixed at the source rather than here: vault_rsnapshot_ntfy_topic is now
+#      host-qualified (`ntfy.coder.cam/<topic>`), which ntfy resolves without
+#      consulting any client config at all. See roles/rsnapshot_gastown.
+#
+# So do not "fix" gastown by pointing this role at it. That fails on
+# permissions long before it helps. Host-qualify the topic instead.
 - name: Configure ntfy client default-host on all hosts
-  hosts: all
+  hosts: "all:!synology"
   gather_facts: false
   roles:
     - ntfy_client

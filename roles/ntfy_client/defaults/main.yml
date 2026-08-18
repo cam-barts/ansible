@@ -6,7 +6,7 @@
 # Cam's self-hosted server.
 ntfy_client_default_host: https://ntfy.coder.cam
 
-# Optional auth — leave undefined if the host's posting topics don't
+# Optional auth: leave undefined if the host's posting topics don't
 # require credentials. Set per-group or per-host in group_vars if needed.
 # ntfy_client_default_user: ""
 # ntfy_client_default_password: ""

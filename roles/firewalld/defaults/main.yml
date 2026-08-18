@@ -1,7 +1,7 @@
 ---
-# Best-effort firewalld rule model for warrig + citadel, authored blind (no
-# sudo, so the live root-only ruleset was never read). See README before
-# first apply — Cam must reconcile with `sudo firewall-cmd --list-all`.
+# firewalld rule model for warrig + citadel, reconciled against both live
+# rulesets on 2026-08-17. See README for the comparison and the Docker
+# caveat. Additive only: the role never disables or removes anything.
 
 # Matches roles/ufw/defaults/main.yml's ufw_citadel_ip.
 firewalld_citadel_ip: 192.168.1.88
@@ -10,13 +10,34 @@ firewalld_citadel_ip: 192.168.1.88
 # inventory_hostname) restricts a rule to specific play hosts; omit to apply
 # on every host the role runs against.
 #
-# cadvisor's 8080 is warrig-only: citadel's cadvisor listens on the internal
-# monitoring_default docker network, not a published host port (see
-# roles/cadvisor/README.md), so there's no port to open on citadel for it.
+# Exactly one rule is warranted. warrig's node_exporter is a host service, so
+# it goes through firewalld's INPUT chain, and this rule is what scopes it to
+# citadel. It already exists live and this role only asserts it stays.
+# Verified 2026-08-17: warrig:9100 answers citadel and refuses black-pearl.
+#
+# cadvisor's 8080 is also warrig-only, and only works because warrig runs
+# cAdvisor with cadvisor_network_mode: host. As a Docker *published* port it
+# was unreachable by firewalld entirely: Docker's own iptables chains are
+# consulted first, so 8080 answered the whole LAN no matter what firewalld
+# said (measured 2026-08-17: black-pearl reached warrig:8080 while being
+# refused warrig:9100). Host networking makes it an ordinary host listener,
+# which is what puts it back under this rule. If cAdvisor on warrig ever goes
+# back to a published port, delete this rule rather than leave it lying:
+# it would then permit nothing and restrict nothing while looking like policy.
+#
+# One rule was dropped and should stay dropped:
+#
+#   9100 on citadel. Prometheus scrapes citadel's node_exporter from a
+#   container on the docker bridge, source 172.20.0.3, never from
+#   192.168.1.88, so a rule carrying that source matches nothing. citadel:9100
+#   is already closed to the LAN (verified from warrig and black-pearl) and
+#   should stay that way.
 firewalld_rich_rules:
   - port: "9100"
     proto: tcp
     source: "{{ firewalld_citadel_ip }}"
+    hosts:
+      - warrig
   - port: "8080"
     proto: tcp
     source: "{{ firewalld_citadel_ip }}"

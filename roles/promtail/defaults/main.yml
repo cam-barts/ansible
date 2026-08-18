@@ -11,7 +11,7 @@ promtail_image: grafana/promtail
 # pinning to `3.6.8` recreates the container exactly once (tag change is still
 # a config difference to docker_container) and never again drifts silently on
 # an upstream `latest` push. json-file log driver on the Pis, so that one
-# recreate is safe — see README.
+# recreate is safe: see README.
 promtail_version: "3.6.8"
 
 promtail_container_name: promtail

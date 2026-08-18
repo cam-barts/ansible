@@ -1,5 +1,5 @@
 ---
-# dsm_config_audit — installs the read-only export script and the forced-command
+# dsm_config_audit: installs the read-only export script and the forced-command
 # Windmill key on gastown. Runs unprivileged (no become): every path this role
 # writes is under nux's own home, which nux owns directly on DSM.
 

@@ -16,7 +16,7 @@ docker_daemon_config:
     loki-url: http://citadel.shadeking.cam.local:3100/loki/api/v1/push
     mode: non-blocking
 
-# cadvisor fold-in vars — inert until citadel joins [cadvisor:children].
+# cadvisor fold-in vars: inert until citadel joins [cadvisor:children].
 # Values match the live container (roles/cadvisor/README.md): no published
 # port, scraped by name over monitoring_default, 512m, no --docker_only.
 cadvisor_memory: "512m"

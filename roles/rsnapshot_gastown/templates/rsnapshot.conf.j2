@@ -1,5 +1,5 @@
 #################################################
-# rsnapshot.conf — live config for gastown.     #
+# rsnapshot.conf: live config for gastown.     #
 #                                                #
 # History note: SynoCommunity rsnapshot 1.5.1-5  #
 # postinst (Apr 13 2026) ran $RM ${PKGDEST}/var, #
@@ -21,7 +21,7 @@ config_version	1.2
 # SNAPSHOT ROOT DIRECTORY #
 ###########################
 
-# Existing tree on /volume1/pi_rsnapshots/ — preserved as-is. Historical
+# Existing tree on /volume1/pi_rsnapshots/: preserved as-is. Historical
 # directories (hourly.0 frozen at 2026-04-13) will age out of rotation as
 # new hourlies push them off the queue.
 snapshot_root	{{ rsnapshot_snapshot_root }}
@@ -33,7 +33,7 @@ snapshot_root	{{ rsnapshot_snapshot_root }}
 cmd_rm		/bin/rm
 cmd_rsync	/bin/rsync
 # Force rsync's --link-dest fallback for rotation. SynoCommunity rsnapshot's
-# native_cp_al is silently broken on gastown — without this the rotation
+# native_cp_al is silently broken on gastown: without this the rotation
 # step byte-copies every file instead of hardlinking, blowing up the
 # snapshot tree. With link_dest=1, rsnapshot passes --link-dest=../$prev/
 # to rsync and dedup is restored.
@@ -74,13 +74,13 @@ ssh_args	{{ rsnapshot_ssh_args }}
 {% set warrig = (rsnapshot_sources | selectattr('name','equalto','warrig') | list)[0] %}
 {% set citadel = (rsnapshot_sources | selectattr('name','equalto','citadel') | list)[0] %}
 {% set pis = rsnapshot_sources | rejectattr('name','equalto','warrig') | rejectattr('name','equalto','citadel') | list %}
-# warrig — primary desktop. Verified gastown→warrig key trust 2026-05-12.
+# warrig: primary desktop. Verified gastown→warrig key trust 2026-05-12.
 backup	{{ warrig.ssh_target }}:{{ warrig.source_path }}	{{ warrig.name }}/
 
-# citadel — secondary host (Docker fleet). gastown→citadel key trust established 2026-05-12.
+# citadel: secondary host (Docker fleet). gastown→citadel key trust established 2026-05-12.
 {% if citadel.disabled | default(false) %}#{% endif %}backup	{{ citadel.ssh_target }}:{{ citadel.source_path }}	{{ citadel.name }}/
 
-# Raspberry Pis — user is pirate, not nux (no /home/nux exists on the Pis).
+# Raspberry Pis: user is pirate, not nux (no /home/nux exists on the Pis).
 # Matches the historical pi_rsnapshots tree shape (wellerman/home/pirate/...).
 {% for src in pis %}
 backup	{{ src.ssh_target }}:{{ src.source_path }}	{{ src.name }}/

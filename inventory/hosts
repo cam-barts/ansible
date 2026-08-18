@@ -2,14 +2,14 @@
 # is needed for any playbook; blast radius comes from each playbook's
 # `hosts:` pattern (plus --limit when you want it narrower).
 #
-# Collapsed from six per-playbook files on 2026-08-17 — four of the old
+# Collapsed from six per-playbook files on 2026-08-17. Four of the old
 # groups were pure aliases (pis≡raspberrypis, arch_backup_targets≡archlinux,
 # borgmatic_target≡synology). Per-host connection details (ansible_host IPs,
 # become, python interpreter) live in inventory/host_vars/<name>.yml.
 
 # Ungrouped: the HTB pwnbox. Named "pwnbox" (not 127.0.0.1) so ansible-pull's
 # implicit localhost/127.0.0.1 limit on other hosts can never match it; no
-# group needed — configure_pwnbox.yml targets the host name directly.
+# group needed, configure_pwnbox.yml targets the host name directly.
 pwnbox ansible_connection=local
 
 [raspberrypis]
@@ -39,9 +39,14 @@ ansible_user=nux
 raspberrypis
 archlinux
 
-# cAdvisor container hosts. Currently the Pis; warrig/citadel run it
-# out-of-band — see roles/cadvisor/README.md to fold them in (their
-# host_vars already carry the no-op values).
+# cAdvisor container hosts. The Pis publish a port; warrig runs it in the
+# host network namespace so firewalld can scope 8080 to citadel (see
+# roles/cadvisor/README.md). citadel stays out of this group: its cAdvisor is
+# reached by container name over the monitoring_default docker network and
+# has no host port at all.
+[cadvisor]
+warrig
+
 [cadvisor:children]
 raspberrypis
 
@@ -63,7 +68,7 @@ raspberrypis
 archlinux
 
 # Hosts that push borg to gastown. group_vars/borgmatic_source/vault.yml
-# (borgmatic passphrases) binds here — citadel's and warrig's borgmatic
+# (borgmatic passphrases) binds here, and citadel's and warrig's borgmatic
 # roles both assert their own vault var out of it.
 [borgmatic_source]
 citadel

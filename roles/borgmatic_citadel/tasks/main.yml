@@ -1,5 +1,5 @@
 ---
-# borgmatic on citadel — daily 03:00 push to gastown over SSH.
+# borgmatic on citadel: daily 03:00 push to gastown over SSH.
 #
 # Idempotency notes:
 #   * Package install is `state: present`, won't churn on existing 2.x.
@@ -61,7 +61,7 @@
       vault_borgmatic_passphrase is not defined. Populate it via
       `ansible-vault create inventory/group_vars/borgmatic_source/vault.yml` and add
       `vault_borgmatic_passphrase: <strong passphrase>`. The passphrase
-      protects the borg repo on gastown — losing it makes archives
+      protects the borg repo on gastown, losing it makes archives
       unrecoverable, so stash a copy in KeePassXC at the same time.
 
 - name: Write passphrase file from ansible-vault

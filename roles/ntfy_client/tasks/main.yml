@@ -1,9 +1,20 @@
 ---
-# ntfy_client — system-wide ntfy CLI config pointing at Cam's self-hosted
+# ntfy_client: system-wide ntfy CLI config pointing at Cam's self-hosted
 # server. Lightweight: just ensures /etc/ntfy/client.yml exists with the
-# right default-host. Does NOT install the ntfy CLI itself — each host's
+# right default-host. Does NOT install the ntfy CLI itself. Each host's
 # install is platform-specific (pacman on Arch, manual binary on Synology,
 # etc.) and is best handled wherever that host's other packages are managed.
+#
+# Every task here writes a root-owned path, so every task declares
+# `become: true` rather than relying on the caller. Before 2026-08-18 none of
+# them did, and the role only worked when invoked from a playbook that set
+# become at play level, or on a host whose inventory set ansible_become.
+# configure_ntfy_client.yml does neither, so it failed on warrig (the one host
+# missing ansible_become) while passing on citadel.
+#
+# gastown is excluded at the playbook level: nux has no sudo there, so these
+# paths are unreachable, and its ntfy CLI is a user-local binary that already
+# works without a client config. See configure_ntfy_client.yml.
 
 - name: Ensure /etc/ntfy directory exists
   ansible.builtin.file:
@@ -12,6 +23,7 @@
     owner: root
     group: root
     mode: "0755"
+  become: true
 
 - name: Template ntfy client config to point at the self-hosted server
   ansible.builtin.template:
@@ -20,12 +32,13 @@
     owner: root
     group: root
     # World-readable so interactive users (nux/pirate) pick up the default-host
-    # instead of silently falling back to public ntfy.sh — unless creds are
+    # instead of silently falling back to public ntfy.sh, unless creds are
     # defined, in which case lock it to root.
     mode: "{{ '0600' if (ntfy_client_default_password | default('')) or (ntfy_client_default_token | default('')) else '0644' }}"
+  become: true
+
 # Root also gets a ~/.config copy: some ntfy CLI builds only honor the
 # per-user path, and the borgmatic-run.sh wrapper + cron jobs run as root.
-
 - name: Ensure /root/.config/ntfy directory exists
   ansible.builtin.file:
     path: /root/.config/ntfy
@@ -33,6 +46,7 @@
     owner: root
     group: root
     mode: "0755"
+  become: true
 
 - name: Render ntfy client config in /root/.config (for cron/root invocations)
   ansible.builtin.template:
@@ -41,3 +55,4 @@
     owner: root
     group: root
     mode: "0600"
+  become: true

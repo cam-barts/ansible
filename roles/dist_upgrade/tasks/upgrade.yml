@@ -1,5 +1,6 @@
 ---
-- name: Update apt cache  # noqa: command-instead-of-module — apt module has no --allow-releaseinfo-change equivalent
+# The apt module has no --allow-releaseinfo-change equivalent.
+- name: Update apt cache  # noqa: command-instead-of-module
   ansible.builtin.command: apt-get update --allow-releaseinfo-change
   register: apt_update_result
   changed_when: "'Fetched' in apt_update_result.stdout"
@@ -11,14 +12,16 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
-- name: Full dist-upgrade  # noqa: command-instead-of-module — apt module has no --allow-downgrades equivalent, needed for Raspbian mirror version quirks
+# Apt module has no --allow-downgrades equivalent, needed for Raspbian mirror version quirks.
+- name: Full dist-upgrade  # noqa: command-instead-of-module
   ansible.builtin.command: apt-get dist-upgrade -y --allow-downgrades -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef
   environment:
     DEBIAN_FRONTEND: noninteractive
   register: dist_upgrade_result
   changed_when: "'0 upgraded' not in dist_upgrade_result.stdout"
 
-- name: Install latest Raspberry Pi firmware  # noqa: package-latest — deliberate: pull in newest firmware release, not just ensure presence
+# Deliberate: pull in the newest firmware release, not just ensure presence.
+- name: Install latest Raspberry Pi firmware  # noqa: package-latest
   ansible.builtin.apt:
     name:
       - raspberrypi-kernel

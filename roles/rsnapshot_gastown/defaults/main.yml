@@ -2,13 +2,13 @@
 # Snapshot tree on /volume1. Preserves the existing pi_rsnapshots/ directory
 # so historical hardlinked rotations age out naturally instead of being
 # orphaned by a path move. (Strategy doc §5 had this same path; Cam's
-# 2026-05-12 chat instruction said /volume1/pi_rsnapshots/ — direct-fix
+# 2026-05-12 chat instruction said /volume1/pi_rsnapshots/, direct-fix
 # crew kept the existing tree to avoid a one-off migration.)
 rsnapshot_snapshot_root: /volume1/NetBackup/pi_rsnapshots/
 
 # Config + lockfile live under nux's home. On gastown that path is on
-# /dev/md0 (the 2.3G DSM system root), NOT bind-mounted from /volume1 —
-# the earlier "upgrade-safe" comment was wrong. Config and lockfile stay
+# /dev/md0 (the 2.3G DSM system root), NOT bind-mounted from /volume1.
+# The earlier "upgrade-safe" comment was wrong. Config and lockfile stay
 # put because they're small; logs were moved to /volume1 below after the
 # 2026-05-12 incident where rsnapshot.log (506M) + rsnapshot-run.last.out
 # (343M) filled / to 100%.
@@ -35,7 +35,7 @@ rsnapshot_bin: /usr/local/bin/rsnapshot
 rsnapshot_ntfy_bin: /var/services/homes/nux/ntfy_1.29.0_linux_x86_64/ntfy
 
 # Wrapper that synoschedtask 4/5/6/7 call. Lives in nux's home for the
-# same reason as the config — editable without sudo.
+# same reason as the config: editable without sudo.
 rsnapshot_wrapper_path: /var/services/homes/nux/rsnapshot-run.sh
 rsnapshot_wrapper_owner: nux
 rsnapshot_wrapper_group: users
@@ -46,7 +46,7 @@ rsnapshot_retain_daily: 7
 rsnapshot_retain_weekly: 4
 rsnapshot_retain_monthly: 12
 
-# Logging — dropped to 2/3 on 2026-08-17. The temporary 4/4 was there to
+# Logging: dropped to 2/3 on 2026-08-17. The temporary 4/4 was there to
 # surface per-source rsync chatter while the config bedded in; it has, and the
 # per-file chatter had grown /var/log/rsnapshot on gastown to 1.1G unrotated.
 # verbose=2 logs each rsnapshot command, loglevel=3 keeps warnings/errors in
@@ -59,11 +59,29 @@ rsnapshot_loglevel: 3
 rsnapshot_ssh_key: /var/services/homes/nux/.ssh/rsnapshot_key
 rsnapshot_ssh_args: "-i {{ rsnapshot_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
 
-# Notification settings. Single topic per Cam's 2026-05-12 decision —
+# Notification settings. Single topic per Cam's 2026-05-12 decision:
 # differentiate by priority + tag, not by topic. Real topic is set via
-# inventory/group_vars/synology/vault.yml — this default is a sentinel so
+# inventory/group_vars/synology/vault.yml: this default is a sentinel so
 # an unconfigured run fails loudly instead of silently posting to a public
 # ntfy.sh topic.
+#
+# HOST-QUALIFY THE VAULT VALUE: `ntfy.coder.cam/<topic>`, not a bare `<topic>`.
+# ntfy accepts host/topic and resolves it without reading any client config
+# (`ntfy send myserver.com/mytopic ...`, per its own --help). Changed to that
+# form 2026-08-18 and verified end to end: published from gastown as nux, who
+# has no ntfy config at any path, and the message arrived on the self-hosted
+# server with the same message id.
+#
+# Why it matters. The wrapper runs as root under synoschedtask. With a bare
+# topic, the only thing keeping alerts on the self-hosted server was root's
+# own ~/.config/ntfy/client.yml, which this repo does not manage and nux
+# cannot read. If that file were ever lost, every publish would go to the
+# PUBLIC ntfy.sh under a topic named after the lab, and nothing would say so:
+# the CLI exits 0 either way and each publish ends in `|| true`. Backup alerts
+# would just stop arriving. Host-qualifying removes that dependency entirely.
+#
+# Note the topic name itself is unchanged by this; ntfy records the message
+# under `<topic>`, not `host/topic`, so existing subscriptions keep working.
 rsnapshot_ntfy_topic: changeme_set_via_vault
 rsnapshot_ntfy_priority_start: min
 rsnapshot_ntfy_priority_ok: default

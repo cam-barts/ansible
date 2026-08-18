@@ -4,9 +4,9 @@
 # no-op.
 #
 # EVERY alert in the lab flows through this server (borgmatic, rsnapshot,
-# dsm_config_audit, ...) — apply with care. A container recreate is a brief
+# dsm_config_audit, ...): apply with care. A container recreate is a brief
 # alert-delivery outage, not data loss (json-file log driver on black-pearl,
-# same as the rest of the Pi fleet — no loki teardown hazard).
+# same as the rest of the Pi fleet: no loki teardown hazard).
 
 ntfy_server_image: binwiederhier/ntfy
 ntfy_server_version: v2.11.0
@@ -29,14 +29,14 @@ ntfy_server_port: 2867
 ntfy_server_network: ntfy_default
 
 # Web Push (background browser notifications). The public key is safe in
-# plaintext — it's handed to every subscribing browser by design. The
+# plaintext: it's handed to every subscribing browser by design. The
 # private key is a real secret; see README "Secrets".
 ntfy_server_web_push_email_address: ntfy@coder.cam
 ntfy_server_web_push_public_key: BCqtKJGtjOVEkbyKlEzrfsIWir9Yp2ubXbM-UMV8suP0SEDJ23bNwRl_WdVaA62n8QYb3iW2nUYi844iSOdf_d4
 ntfy_server_web_push_private_key: "{{ vault_ntfy_server_web_push_private_key }}"
 
 # Active server.yml settings, read off the live file on black-pearl
-# 2026-08-17 (see README — everything else in ntfy's shipped server.yml is
+# 2026-08-17 (see README: everything else in ntfy's shipped server.yml is
 # commented-out defaults, not reproduced here).
 ntfy_server_behind_proxy: true
 ntfy_server_attachment_cache_dir: /var/cache/ntfy

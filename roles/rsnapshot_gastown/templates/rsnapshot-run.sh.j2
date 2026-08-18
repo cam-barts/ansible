@@ -1,10 +1,10 @@
 #!/bin/sh
-# rsnapshot-run.sh — invoked by synoschedtask (hourly/daily/weekly/monthly).
+# rsnapshot-run.sh: invoked by synoschedtask (hourly/daily/weekly/monthly).
 # Runs rsnapshot with the live config path and sends notifications via ntfy
 # with priority by outcome.
 #
 # Replaces the legacy "cmd1 && cmd2 || cmd3" chain whose || branch fired the
-# "Completed" message on FAILURE — that bug hid the April 13 break for a
+# "Completed" message on FAILURE: that bug hid the April 13 break for a
 # month. Logic is now explicit if/elif/else so success / warnings / failure
 # are routed separately and you only get paged for real failures.
 
@@ -19,7 +19,7 @@ topic="{{ rsnapshot_ntfy_topic }}"
 
 # Capture wrapper stdout/stderr to a fixed file on /volume1. Overwrite-on-
 # start (single `>`) so the file stays bounded to a single run's worth of
-# output — the 2026-05-12 incident was a 343M unbounded growth on / when
+# output: the 2026-05-12 incident was a 343M unbounded growth on / when
 # this lived under nux's home on /dev/md0.
 exec >"{{ rsnapshot_wrapper_out_path }}" 2>&1
 
@@ -51,7 +51,7 @@ elif [ "$rc" -eq 2 ]; then
         -p {{ rsnapshot_ntfy_priority_warn }} \
         --tags=backup,information_source \
         "$topic" \
-        "rsnapshot $interval completed but some files weren't transferred (perms, locked DBs, etc.) — see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
+        "rsnapshot $interval completed but some files weren't transferred (perms, locked DBs, etc.), see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
     exit 0
 else
     "$ntfy" publish \
@@ -59,6 +59,6 @@ else
         -p {{ rsnapshot_ntfy_priority_fail }} \
         --tags=backup,warning \
         "$topic" \
-        "rsnapshot $interval exited $rc on gastown — see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
+        "rsnapshot $interval exited $rc on gastown, see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
     exit "$rc"
 fi

@@ -1,8 +1,8 @@
 ---
 # Two-play sequence:
-#   1. citadel — install borgmatic, render config + scripts, generate
+#   1. citadel: install borgmatic, render config + scripts, generate
 #      citadel→gastown SSH key, write vault passphrase, init the borg repo.
-#   2. gastown — install the citadel pubkey into nux's authorized_keys so
+#   2. gastown: install the citadel pubkey into nux's authorized_keys so
 #      the daily cron push from citadel can land.
 #
 # The pubkey is registered as a fact on citadel (set_fact at end of role
