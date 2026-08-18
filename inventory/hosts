@@ -19,7 +19,6 @@ billy-of-tea
 
 [raspberrypis:vars]
 ansible_user=pirate
-ansible_ssh_private_key_file=~/.ssh/rsnapshot_key
 
 [archlinux]
 citadel ansible_host=citadel.shadeking.cam.local
@@ -33,7 +32,6 @@ gastown ansible_host=gastown.shadeking.cam.local
 
 [synology:vars]
 ansible_user=nux
-ansible_ssh_private_key_file=~/.ssh/rsnapshot_key
 
 # --- role/playbook target groups -------------------------------------------
 
