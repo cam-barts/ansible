@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# ntfy server config file — trimmed to the settings actually set on the live
+# server (roles/ntfy_server). ntfy's own shipped server.yml is ~380 lines of
+# commented-out documentation for every other option; see
+# https://ntfy.sh/docs/config/ for the full reference instead of reproducing
+# it here.
+
+base-url: {{ ntfy_server_base_url }}
+behind-proxy: {{ ntfy_server_behind_proxy | lower }}
+attachment-cache-dir: {{ ntfy_server_attachment_cache_dir }}
+attachment-file-size-limit: "{{ ntfy_server_attachment_file_size_limit }}"
+message-size-limit: "{{ ntfy_server_message_size_limit }}"
+visitor-attachment-total-size-limit: "{{ ntfy_server_visitor_attachment_total_size_limit }}"

@@ -1,15 +1,159 @@
 ---
-# borgmatic_warrig — install the system-state export script + its output dir.
+# borgmatic_warrig — daily 04:00 push to gastown over SSH.
 #
-# Idempotency:
-#   * template/file modules converge; safe to re-run.
-#   * Legacy pkglists script removal is state:absent (no-op once gone).
+# ADOPTION, NOT GREENFIELD. warrig already backs up to gastown today via a
+# hand-managed /etc/borgmatic/config.yaml that is root-only and was never
+# captured into git. This role takes ownership of that file. Run the first
+# pass with `--check --diff --ask-become-pass` and reconcile the diff into
+# defaults/main.yml — see README.md.
 #
-# What this role intentionally does NOT do:
-#   * It does not render /etc/borgmatic/config.yaml (hand-managed on warrig).
-#   * It does not wire before_backup automatically — that needs a one-time edit
-#     to the live config, which we can't safely template without first
-#     capturing it. See README.md "Wiring the hook". Out of scope per plan.
+# Idempotency notes:
+#   * Package install is `state: present`, won't churn on existing 2.x.
+#   * SSH key generation guarded by `creates:` so re-runs no-op.
+#   * SSH config is rendered via blockinfile with a unique marker so re-runs
+#     converge rather than appending duplicates.
+#   * Config render uses `validate: borgmatic config validate -c %s` so a
+#     malformed template never reaches disk.
+#   * `borgmatic init` is gated by a marker file AND a `borgmatic info`
+#     pre-check — warrig's repo already exists, so this must never fire.
+#   * Cron entry is `cron:` with a unique name, so re-runs converge.
+
+- name: Install borgmatic
+  ansible.builtin.package:
+    name: borgmatic
+    state: present
+
+- name: Ensure borg is present (borgmatic depends on it, but be explicit)
+  ansible.builtin.package:
+    name: borg
+    state: present
+
+- name: Ensure borgmatic config directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure borgmatic state directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# --- passphrase from ansible-vault -------------------------------------------
+# vault_borgmatic_warrig_passphrase is NOT in the vault yet — the vault holds
+# only citadel's `vault_borgmatic_passphrase`, which is a DIFFERENT repo's
+# passphrase and must not be reused here. See defaults/main.yml.
+- name: Assert warrig's ansible-vault passphrase variable is defined
+  ansible.builtin.assert:
+    that:
+      - vault_borgmatic_warrig_passphrase is defined
+      - vault_borgmatic_warrig_passphrase | length > 0
+    fail_msg: >-
+      {{ borgmatic_passphrase_var }} is not defined. It is a REQUIREMENT this
+      role adds and Cam must satisfy once:
+      `ansible-vault edit inventory/group_vars/borgmatic_source/vault.yml`
+      and add `{{ borgmatic_passphrase_var }}: <warrig's EXISTING passphrase>`.
+      Do NOT reuse vault_borgmatic_passphrase — that is citadel's repo
+      passphrase; writing it here would make warrig's existing archives
+      unopenable. Recover warrig's real value from KeePassXC or from
+      `sudo cat /etc/borgmatic/config.yaml` on warrig. To run a reconcile pass
+      before the vault var exists, set borgmatic_manage_passphrase=false.
+  when: borgmatic_manage_passphrase | bool
+
+- name: Write passphrase file from ansible-vault
+  ansible.builtin.copy:
+    content: "{{ vault_borgmatic_warrig_passphrase }}\n"
+    dest: "{{ borgmatic_passphrase_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: borgmatic_manage_passphrase | bool
+
+# --- SSH key trust warrig→gastown -------------------------------------------
+- name: Ensure /root/.ssh exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate warrig→gastown SSH keypair (ed25519)
+  ansible.builtin.command:
+    cmd: "ssh-keygen -t ed25519 -f {{ borgmatic_ssh_key_path }} -N '' -C 'borgmatic warrig→gastown'"
+    creates: "{{ borgmatic_ssh_key_path }}"
+  # Run in check mode too so subsequent file/slurp tasks have a real file to
+  # reference; the `creates:` guard keeps it idempotent.
+  check_mode: false
+
+- name: Ensure private key is root-only
+  ansible.builtin.file:
+    path: "{{ borgmatic_ssh_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Slurp warrig→gastown SSH public key
+  ansible.builtin.slurp:
+    src: "{{ borgmatic_ssh_key_path }}.pub"
+  register: borgmatic_ssh_pub_slurp
+
+- name: Stash pubkey as a fact for the gastown play
+  ansible.builtin.set_fact:
+    borgmatic_ssh_public_key: "{{ borgmatic_ssh_pub_slurp.content | b64decode | trim }}"
+
+# IdentitiesOnly pins root's gastown ssh to the new key. warrig's existing
+# hand-made trust uses some other identity, so this play and the playbook's
+# gastown authorized_key play are a matched pair — run both, or the nightly
+# push loses the identity it has been using. Set borgmatic_manage_ssh_config
+# to false to leave the live ssh config alone.
+- name: Render /root/.ssh/config entry for gastown
+  ansible.builtin.blockinfile:
+    path: /root/.ssh/config
+    create: true
+    owner: root
+    group: root
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED: borgmatic_warrig"
+    block: |
+      Host {{ borgmatic_ssh_remote_host }}
+          User {{ borgmatic_ssh_remote_user }}
+          IdentityFile {{ borgmatic_ssh_key_path }}
+          IdentitiesOnly yes
+  when: borgmatic_manage_ssh_config | bool
+
+- name: Seed known_hosts for gastown (accept-new on first contact)
+  ansible.builtin.command:
+    cmd: >-
+      ssh -o BatchMode=yes
+          -o StrictHostKeyChecking=accept-new
+          -i {{ borgmatic_ssh_key_path }}
+          {{ borgmatic_ssh_remote_user }}@{{ borgmatic_ssh_remote_host }}
+          true
+  register: borgmatic_ssh_seed
+  failed_when: false
+  changed_when: false
+
+# --- config + scripts -------------------------------------------------------
+# This is the load-bearing safety net for the adoption: the hand-managed config
+# is copied aside once (force: false → never overwritten on later runs) before
+# the template lands on top of it.
+- name: Back up the previous hand-managed borgmatic config once
+  ansible.builtin.copy:
+    src: "{{ borgmatic_config_path }}"
+    dest: "{{ borgmatic_config_path }}.pre-ansible.bak"
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+  failed_when: false
 
 - name: Ensure system-state capture directory exists
   ansible.builtin.file:
@@ -32,14 +176,66 @@
     path: /usr/local/bin/borgmatic-export-pkglists.sh
     state: absent
 
-# Post-install reminder: surfaces the manual wiring step in playbook output so
-# it isn't silently forgotten. Non-failing; purely informational.
-- name: Remind operator to wire before_backup + source_directories once
-  ansible.builtin.debug:
-    msg: >-
-      borgmatic_warrig: export script installed at {{ borgmatic_export_script_path }}.
-      ONE-TIME manual step still required in /etc/borgmatic/config.yaml on warrig:
-      (1) add '{{ borgmatic_system_state_dir }}' to source_directories,
-      (2) add '{{ borgmatic_export_script_path }}' to the before_backup commands.
-      Then verify with: sudo borgmatic --config /etc/borgmatic/config.yaml create --dry-run -v 1
-      See roles/borgmatic_warrig/README.md.
+- name: Install borgmatic-run.sh wrapper
+  ansible.builtin.template:
+    src: borgmatic-run.sh.j2
+    dest: "{{ borgmatic_run_script_path }}"
+    owner: root
+    group: root
+    mode: "0750"
+
+# Rendered after the scripts so `borgmatic config validate` runs against a
+# config whose hook targets already exist on disk.
+- name: Render borgmatic config
+  ansible.builtin.template:
+    src: borgmatic_config.yaml.j2
+    dest: "{{ borgmatic_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "/usr/bin/borgmatic config validate -c %s"
+
+# --- repo adoption ----------------------------------------------------------
+# warrig's repo already exists, so the probe should succeed and init should be
+# skipped. Both guards are kept anyway: probe first, marker second.
+- name: Check whether the borg repo already exists on gastown
+  ansible.builtin.command:
+    cmd: "/usr/bin/borgmatic --config {{ borgmatic_config_path }} info"
+  register: borgmatic_repo_probe
+  failed_when: false
+  changed_when: false
+  when: not (ansible_check_mode | default(false))
+
+- name: Initialize the borg repo on gastown (should never fire for warrig)
+  ansible.builtin.command:
+    cmd: "/usr/bin/borgmatic --config {{ borgmatic_config_path }} init --encryption repokey-blake2"
+  args:
+    creates: "{{ borgmatic_init_marker }}"
+  when:
+    - not (ansible_check_mode | default(false))
+    - borgmatic_repo_probe.rc | default(1) != 0
+
+- name: Touch borgmatic init marker
+  ansible.builtin.file:
+    path: "{{ borgmatic_init_marker }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+  when: not (ansible_check_mode | default(false))
+
+# --- cron -------------------------------------------------------------------
+# Adds a NEW named entry. If warrig's root crontab already has a hand-made
+# borgmatic line, this leaves it in place and warrig ends up with two daily
+# runs — the flock in borgmatic-run.sh keeps them from stacking, but the old
+# line probably calls borgmatic directly and bypasses the lock. Check
+# `sudo crontab -l` and delete the hand-made line. See README.
+- name: Schedule daily borgmatic run via cron
+  ansible.builtin.cron:
+    name: "{{ borgmatic_cron_name }}"
+    user: "{{ borgmatic_cron_user }}"
+    hour: "{{ borgmatic_cron_hour }}"
+    minute: "{{ borgmatic_cron_minute }}"
+    job: "{{ borgmatic_run_script_path }} >> {{ borgmatic_log_path }} 2>&1"

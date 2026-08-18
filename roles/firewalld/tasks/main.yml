@@ -1,0 +1,26 @@
+---
+# Best-effort, additive-only firewalld model — see README. This role never
+# sets state: disabled/absent and never touches --list-all, so it can only
+# ever open rules, never close ones the live host already has.
+
+- name: Allow SSH
+  ansible.posix.firewalld:
+    service: ssh
+    permanent: true
+    immediate: true
+    state: enabled
+  become: true
+
+- name: Allow trusted-source ports via rich rules
+  ansible.posix.firewalld:
+    rich_rule: >-
+      rule family="ipv4"
+      source address="{{ item.source }}"
+      port port="{{ item.port }}" protocol="{{ item.proto }}"
+      accept
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ firewalld_rich_rules }}"
+  when: item.hosts is not defined or inventory_hostname in item.hosts
+  become: true

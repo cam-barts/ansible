@@ -1,0 +1,5 @@
+- name: Configure firewalld on warrig and citadel
+  hosts: firewalld
+  gather_facts: false
+  roles:
+    - firewalld

@@ -1,0 +1,3 @@
+---
+ufw_workstation_ip: 192.168.1.168
+ufw_citadel_ip: 192.168.1.88

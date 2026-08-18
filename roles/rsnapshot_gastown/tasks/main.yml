@@ -6,22 +6,25 @@
 # i.e. no sudo escalation is required for any path this role touches.
 
 - name: Ensure rsnapshot config directory exists
-  file:
+  ansible.builtin.file:
     path: "{{ rsnapshot_config_path | dirname }}"
     state: directory
     mode: "0755"
 
 - name: Ensure rsnapshot snapshot root exists
-  file:
+  ansible.builtin.file:
     path: "{{ rsnapshot_snapshot_root }}"
     state: directory
+    # Matches the live directory (DSM shared-folder default); tightening it
+    # is a deliberate change to make on gastown, not here.
+    mode: "0777"
 
 # /volume1/NetBackup/ is root-owned at the top level; nux can't mkdir
 # beneath it without become. Keeps log output off /dev/md0 (the 2.3G DSM
 # system root) where rsnapshot.log + rsnapshot-run.last.out filled / to
 # 100% on 2026-05-12.
 - name: Ensure rsnapshot log directory exists on /volume1
-  file:
+  ansible.builtin.file:
     path: "{{ rsnapshot_log_dir }}"
     state: directory
     owner: nux
@@ -30,7 +33,7 @@
   become: true
 
 - name: Render rsnapshot excludes file
-  template:
+  ansible.builtin.template:
     src: rsnapshot.excludes.j2
     dest: "{{ rsnapshot_excludes_path }}"
     owner: nux
@@ -38,15 +41,16 @@
     mode: "0644"
 
 - name: Back up the previous rsnapshot.conf once
-  copy:
+  ansible.builtin.copy:
     src: "{{ rsnapshot_config_path }}"
     dest: "{{ rsnapshot_config_path }}.pre-ansible.bak"
     remote_src: true
     force: false
+    mode: "0644"
   failed_when: false
 
 - name: Render rsnapshot.conf
-  template:
+  ansible.builtin.template:
     src: rsnapshot.conf.j2
     dest: "{{ rsnapshot_config_path }}"
     owner: nux
@@ -55,7 +59,7 @@
     validate: "{{ rsnapshot_bin }} -c %s configtest"
 
 - name: Install rsnapshot-run wrapper
-  template:
+  ansible.builtin.template:
     src: rsnapshot-run.sh.j2
     dest: "{{ rsnapshot_wrapper_path }}"
     owner: "{{ rsnapshot_wrapper_owner }}"
@@ -63,7 +67,7 @@
     mode: "0755"
 
 - name: Point synoschedtask entries at the wrapper
-  include_tasks: synoschedtask.yml
+  ansible.builtin.include_tasks: synoschedtask.yml
   loop: "{{ rsnapshot_synoschedtask_ids }}"
   loop_control:
     loop_var: task

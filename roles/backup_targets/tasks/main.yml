@@ -18,13 +18,13 @@
   when: ansible_facts['os_family'] == "Debian"
 
 - name: Sync pacman package db (Archlinux family)
-  ansible.builtin.pacman:
+  community.general.pacman:
     update_cache: true
   become: true
   when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Install backup-target packages (Archlinux family)
-  ansible.builtin.pacman:
+  community.general.pacman:
     name: "{{ backup_target_packages }}"
     state: present
   become: true

@@ -1,31 +1,40 @@
 ---
-- name: Update apt cache
-  command: apt-get update --allow-releaseinfo-change
+- name: Update apt cache  # noqa: command-instead-of-module — apt module has no --allow-releaseinfo-change equivalent
+  ansible.builtin.command: apt-get update --allow-releaseinfo-change
   register: apt_update_result
   changed_when: "'Fetched' in apt_update_result.stdout"
 
 - name: Minimal safe upgrade first
-  command: apt-get upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef
+  ansible.builtin.apt:
+    upgrade: safe
+    force_apt_get: true
   environment:
     DEBIAN_FRONTEND: noninteractive
-  register: safe_upgrade_result
-  changed_when: "'0 upgraded' not in safe_upgrade_result.stdout"
 
-- name: Full dist-upgrade
-  command: apt-get dist-upgrade -y --allow-downgrades -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef
+- name: Full dist-upgrade  # noqa: command-instead-of-module — apt module has no --allow-downgrades equivalent, needed for Raspbian mirror version quirks
+  ansible.builtin.command: apt-get dist-upgrade -y --allow-downgrades -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef
   environment:
     DEBIAN_FRONTEND: noninteractive
   register: dist_upgrade_result
   changed_when: "'0 upgraded' not in dist_upgrade_result.stdout"
 
-- name: Install latest Raspberry Pi firmware
-  raw: DEBIAN_FRONTEND=noninteractive apt-get install -y raspberrypi-kernel raspberrypi-bootloader || true
-  changed_when: false
+- name: Install latest Raspberry Pi firmware  # noqa: package-latest — deliberate: pull in newest firmware release, not just ensure presence
+  ansible.builtin.apt:
+    name:
+      - raspberrypi-kernel
+      - raspberrypi-bootloader
+    state: latest
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  # These package names don't exist on every release; a miss must not abort
+  # a half-finished dist-upgrade (restores the old `|| true` semantics).
+  failed_when: false
 
 - name: Remove obsolete packages
-  raw: apt-get autoremove -y --purge
-  changed_when: false
+  ansible.builtin.apt:
+    autoremove: true
+    purge: true
 
 - name: Clean apt cache
-  raw: apt-get autoclean
-  changed_when: false
+  ansible.builtin.apt:
+    autoclean: true

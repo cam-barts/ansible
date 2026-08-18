@@ -1,0 +1,161 @@
+# {{ ansible_managed }}
+# =============================================================================
+# Promtail config for Raspberry Pi (armv7)
+# Collects: Docker container logs (via service discovery) + host system logs
+#
+# Label convention: matches Alloy's output so that all hosts produce the
+# same label set in Loki:
+#   compose_project, compose_service, container_name, host, service_name
+# =============================================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+# Where Promtail tracks its read position per file.
+# Persisted via the Docker volume so restarts don't re-ingest old logs.
+positions:
+  filename: /tmp/positions/positions.yaml
+
+# ---------------------------------------------------------------------------
+# Loki endpoint
+# ---------------------------------------------------------------------------
+clients:
+  - url: ${LOKI_URL}/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576  # 1MB
+
+# ---------------------------------------------------------------------------
+# SCRAPE CONFIGS
+# ---------------------------------------------------------------------------
+scrape_configs:
+
+  # =========================================================================
+  # 1. Docker container logs — automatic discovery via Docker socket
+  # =========================================================================
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+
+    relabel_configs:
+      # "container_name" — matches Alloy's discovery.docker convention
+      # (Docker logging driver uses "container" instead, but Alloy is the
+      # future so we align with that)
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/?(.*)'
+        target_label: container_name
+
+      # Compose project name
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: compose_project
+
+      # Compose service name
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: compose_service
+
+      # service_name — matches Alloy format
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/?(.*)'
+        target_label: service_name
+
+      # Host label for filtering by machine in Grafana
+      - target_label: host
+        replacement: ${HOSTNAME}
+
+      # Don't scrape Promtail's own logs to avoid feedback loops
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/?promtail'
+        action: drop
+
+    pipeline_stages:
+      # Parse Docker's JSON log format
+      - docker: {}
+
+      # Extract log level if your apps log structured JSON with a level field
+      - json:
+          expressions:
+            level: level
+            msg: msg
+      - labels:
+          level:
+
+  # =========================================================================
+  # 2. Host system logs — syslog, auth, kernel, dmesg, dpkg
+  # =========================================================================
+  - job_name: host-syslog
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: host-syslog
+          host: ${HOSTNAME}
+          __path__: /var/log/syslog
+
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<hostname>\S+)\s+(?P<process>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)$'
+      - labels:
+          process:
+      - timestamp:
+          source: timestamp
+          format: 'Jan  2 15:04:05'
+          location: 'Local'
+
+  - job_name: host-auth
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: host-auth
+          host: ${HOSTNAME}
+          __path__: /var/log/auth.log
+
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<hostname>\S+)\s+(?P<process>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)$'
+      - labels:
+          process:
+
+  - job_name: host-kernel
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: host-kernel
+          host: ${HOSTNAME}
+          __path__: /var/log/kern.log
+
+  - job_name: host-dmesg
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: host-dmesg
+          host: ${HOSTNAME}
+          __path__: /var/log/dmesg
+
+  - job_name: host-dpkg
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: host-dpkg
+          host: ${HOSTNAME}
+          __path__: /var/log/dpkg.log
+
+  # =========================================================================
+  # 3. Journal (systemd) — covers services that only log to journald
+  # =========================================================================
+  # Uncomment the block below if you want journald logs as well.
+  # You'll need to add an additional volume mount to docker-compose.yml:
+  #   - /run/log/journal:/run/log/journal:ro
+  #   - /etc/machine-id:/etc/machine-id:ro
+  #
+  # - job_name: journal
+  #   journal:
+  #     max_age: 12h
+  #     labels:
+  #       job: journal
+  #       host: ${HOSTNAME}
+  #   relabel_configs:
+  #     - source_labels: ['__journal__systemd_unit']
+  #       target_label: systemd_unit
+  #     - source_labels: ['__journal_syslog_identifier']
+  #       target_label: syslog_identifier

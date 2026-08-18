@@ -1,0 +1,36 @@
+# ansible-pull entrypoint for the Pis (wellerman, black-pearl, billy-of-tea).
+# Imports the six playbooks relevant to the Pi fleet so a single pull run
+# configures node_exporter, cadvisor, log rotation, ufw, ntfy, and backup
+# access in one shot.
+#
+# Invoke with:
+#   ansible-pull -U https://github.com/cam-barts/ansible.git -C stable \
+#     -i inventory/ pull/local.yml
+#
+# `configure_ntfy_client.yml` is `hosts: all` (it's shared with non-Pi
+# hosts elsewhere in the repo); when run via ansible-pull on a Pi, the
+# `-i inventory/` + the pulling host's own hostname naturally limits `all`
+# down to that one host, so no `--limit` is needed here. Not modifying that
+# playbook — out of scope for pull/.
+#
+# The `stable` branch convention (`-C stable`) and the systemd timer units
+# that will schedule this on a cadence are future phases, not implemented
+# yet.
+
+- name: Import node_exporter deployment
+  ansible.builtin.import_playbook: ../playbooks/deploy_node_exporter.yml
+
+- name: Import cAdvisor deployment
+  ansible.builtin.import_playbook: ../playbooks/deploy_cadvisor.yml
+
+- name: Import Docker log rotation configuration
+  ansible.builtin.import_playbook: ../playbooks/configure_docker_log_rotation.yml
+
+- name: Import UFW configuration
+  ansible.builtin.import_playbook: ../playbooks/configure_ufw.yml
+
+- name: Import ntfy client configuration
+  ansible.builtin.import_playbook: ../playbooks/configure_ntfy_client.yml
+
+- name: Import backup targets configuration
+  ansible.builtin.import_playbook: ../playbooks/configure_backup_targets.yml

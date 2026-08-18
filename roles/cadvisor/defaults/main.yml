@@ -19,6 +19,12 @@ cadvisor_memory: 256m
 cadvisor_publish_port: true
 cadvisor_port: 8080
 
+# Host IP the published port binds to. Containers this role created record
+# 0.0.0.0; ones created by hand with `docker run -p 8080:8080` record an empty
+# host IP, and the module counts that as a difference — i.e. a recreate. Set
+# this to "" in host_vars for such hosts (warrig) to leave the binding alone.
+cadvisor_publish_host_ip: "0.0.0.0"
+
 # --docker_only limits cAdvisor to docker cgroups instead of every system
 # cgroup — meaningfully lighter on weak CPUs (the Pis).
 cadvisor_docker_only: true
@@ -26,3 +32,15 @@ cadvisor_docker_only: true
 # Extra docker networks to attach (list of {name: ...}). Empty = default bridge.
 # For citadel: [{name: monitoring_default}] with cadvisor_publish_port: false.
 cadvisor_networks: []
+
+# docker_container recreates (stop -> rm -> create) on ANY config difference.
+# On hosts whose dockerd defaults to the `loki` log driver (warrig, citadel),
+# tearing down a container deadlocks, so the role refuses to recreate there
+# unless this is set true. See README, "loki recreate hazard".
+cadvisor_allow_recreate: false
+
+# Install + enable cadvisor-boot-fix.service: cAdvisor v0.52.1 probes dockerd
+# once at startup with a hardcoded 10s timeout and never retries, so on a busy
+# host it comes up without the docker factory (metrics lose the `name` label).
+# The unit restarts it after dockerd settles. Needs become (--ask-become-pass).
+cadvisor_boot_fix: false

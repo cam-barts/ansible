@@ -1,3 +1,0 @@
----
-# No handlers required — borgmatic runs from cron, no daemon to reload.
-# Kept for symmetry with rsnapshot_gastown and easy future expansion.

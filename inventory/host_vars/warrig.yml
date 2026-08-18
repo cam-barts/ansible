@@ -1,0 +1,32 @@
+---
+# Read off the live host 2026-08-17; verified byte-equivalent to
+# /etc/docker/daemon.json by the adversarial review pass. Deliberate
+# divergence from citadel: warrig ships loki over the network, so small
+# batches (400) and a short timeout (1s).
+docker_daemon_config:
+  data-root: /home/docker
+  debug: true
+  features:
+    buildkit: true
+  log-driver: loki
+  log-opts:
+    keep-file: "true"
+    loki-batch-size: "400"
+    loki-max-backoff: 800ms
+    loki-retries: "2"
+    loki-timeout: 1s
+    loki-url: http://citadel.shadeking.cam.local:3100/loki/api/v1/push
+    mode: non-blocking
+  runtimes:
+    nvidia:
+      args: []
+      path: nvidia-container-runtime
+
+# cadvisor fold-in vars — inert until warrig joins [cadvisor:children].
+# Values match the live container (roles/cadvisor/README.md), so first
+# apply is a no-op and no loki-recreate is attempted. boot_fix adopts the
+# hand-written cadvisor-boot-fix.service already enabled on this host.
+cadvisor_memory: "512m"
+cadvisor_docker_only: false
+cadvisor_publish_host_ip: ""
+cadvisor_boot_fix: true

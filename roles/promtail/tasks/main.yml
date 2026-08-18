@@ -1,0 +1,39 @@
+---
+# Prereq: the Docker SDK for Python, required by community.docker modules.
+# Only this step needs privilege; the docker_* tasks run as the login user
+# (pirate), which is in the `docker` group.
+
+- name: Update apt cache (ignore errors from broken repos)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  failed_when: false
+
+- name: Install Docker SDK for Python
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+  become: true
+
+- name: Ensure the promtail config directory exists
+  ansible.builtin.file:
+    path: "{{ promtail_config_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Template promtail-config.yml
+  ansible.builtin.template:
+    src: promtail-config.yml.j2
+    dest: "{{ promtail_config_dir }}/promtail-config.yml"
+    mode: "0644"
+
+- name: Pull Promtail image
+  community.docker.docker_image:
+    name: "{{ promtail_image }}:{{ promtail_version }}"
+    source: pull
+
+- name: Run Promtail container
+  community.docker.docker_container:
+    name: "{{ promtail_container_name }}"
+  args: "{{ promtail_container_spec }}"

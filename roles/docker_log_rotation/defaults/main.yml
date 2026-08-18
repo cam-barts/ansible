@@ -1,0 +1,27 @@
+---
+# docker_log_rotation — despite the name, this role now manages the whole of
+# /etc/docker/daemon.json, not just the log stanza. The name is kept
+# deliberately: renaming it to `docker_daemon` would churn the playbook, the
+# top-level README and anything else referencing it, for zero behavioural gain.
+#
+# The role MERGES `docker_daemon_config` over whatever is already on disk
+# (shallow `combine`), so declaring a partial config only touches the keys you
+# name, and declaring a host's full live config is a no-op.
+
+# Default = the historical behaviour: json-file, 10m x 3. This is what the Pis
+# get, and the rendered bytes are identical to what the role produced before
+# it was generalised.
+docker_daemon_config:
+  log-driver: json-file
+  log-opts:
+    max-size: "10m"
+    max-file: "3"
+
+# Restarting dockerd is DANGEROUS on hosts that log to loki: the loki log
+# driver ships to a Loki container that is itself supervised by the daemon
+# being restarted, so a restart can deadlock on containers that cannot flush.
+# Default off — the role warns at the end instead, and a human picks the moment.
+docker_daemon_allow_restart: false
+
+docker_daemon_config_path: /etc/docker/daemon.json
+docker_daemon_config_mode: "0644"

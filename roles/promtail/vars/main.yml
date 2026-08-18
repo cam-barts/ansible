@@ -1,0 +1,27 @@
+---
+# The container spec, in one place, same convention as roles/cadvisor. No
+# recreate guard here: the Pis default to the `json-file` log driver, so
+# `docker_container` tearing a container down never deadlocks dockerd (that
+# hazard is warrig/citadel-only, see roles/cadvisor/README.md).
+
+promtail_container_spec:
+  name: "{{ promtail_container_name }}"
+  image: "{{ promtail_image }}:{{ promtail_version }}"
+  state: started
+  restart_policy: "{{ promtail_restart_policy }}"
+  network_mode: host
+  command:
+    - -config.file=/etc/promtail/config.yml
+    - -config.expand-env=true
+  env:
+    HOSTNAME: "{{ inventory_hostname }}"
+    LOKI_URL: "{{ promtail_loki_url }}"
+  etc_hosts:
+    citadel.shadeking.cam.local: "{{ promtail_citadel_ip }}"
+  volumes:
+    - "{{ promtail_config_dir }}/promtail-config.yml:/etc/promtail/config.yml:ro"
+    - promtail_promtail-positions:/tmp/positions
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    - /var/log:/var/log:ro
+    - /etc/machine-id:/etc/machine-id:ro

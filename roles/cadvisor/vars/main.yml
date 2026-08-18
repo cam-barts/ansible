@@ -1,0 +1,28 @@
+---
+# The container spec, in one place: the recreate guard dry-runs the exact same
+# arguments it then applies, so the two can never drift apart. Both tasks pass
+# it through `args:` and repeat `name:` inline — that is not redundancy, it is
+# what lets ansible-lint see the module's required argument.
+#
+# No `comparisons:` overrides are needed here — options the role does not set
+# are not compared at all, and set/dict options default to allow_more_present.
+# The only options compared strictly are the ones listed below, which is
+# precisely what the guard reports on.
+
+cadvisor_container_spec:
+  name: "{{ cadvisor_container_name }}"
+  image: "{{ cadvisor_image }}:{{ cadvisor_version }}"
+  state: started
+  restart_policy: "{{ cadvisor_restart_policy }}"
+  memory: "{{ cadvisor_memory }}"
+  devices:
+    - /dev/kmsg:/dev/kmsg
+  volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:ro
+    - /sys:/sys:ro
+    - /var/lib/docker/:/var/lib/docker:ro
+  published_ports: "{{ [cadvisor_port ~ ':8080'] if cadvisor_publish_port else omit }}"
+  default_host_ip: "{{ cadvisor_publish_host_ip }}"
+  networks: "{{ cadvisor_networks if (cadvisor_networks | length > 0) else omit }}"
+  command: "{{ ['--docker_only=true'] if cadvisor_docker_only else omit }}"

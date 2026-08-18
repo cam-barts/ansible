@@ -1,30 +1,49 @@
+---
+# Manages /etc/docker/daemon.json by merging `docker_daemon_config` over the
+# file already on disk. Keys not mentioned survive untouched.
+#
+# Idempotency: `to_nice_json` sorts keys and indents 4, so a host whose live
+# file was written by hand in another style shows a formatting-only diff on the
+# first apply even when the JSON content is unchanged. That is expected — read
+# the diff, confirm it is only whitespace/ordering, then apply.
+
 - name: Read existing daemon.json
-  slurp:
-    src: /etc/docker/daemon.json
+  ansible.builtin.slurp:
+    src: "{{ docker_daemon_config_path }}"
   become: true
   register: existing_daemon_json
   failed_when: false
 
 - name: Set existing config
-  set_fact:
+  ansible.builtin.set_fact:
     docker_config: "{{ (existing_daemon_json.content | b64decode | from_json) if (existing_daemon_json.content is defined) else {} }}"
 
-- name: Merge log rotation into daemon.json
-  copy:
-    content: "{{ docker_config | combine(log_config) | to_nice_json }}\n"
-    dest: /etc/docker/daemon.json
+- name: Merge managed keys into daemon.json
+  ansible.builtin.copy:
+    content: "{{ docker_config | combine(docker_daemon_config) | to_nice_json }}\n"
+    dest: "{{ docker_daemon_config_path }}"
+    owner: root
+    group: root
+    mode: "{{ docker_daemon_config_mode }}"
   become: true
-  vars:
-    log_config:
-      log-driver: json-file
-      log-opts:
-        max-size: "10m"
-        max-file: "3"
-  notify: restart docker
+  register: docker_daemon_write
+  notify: Restart docker
 
-- name: Ensure log rotation applies to running containers
-  debug:
+- name: Warn that dockerd needs a manual restart
+  ansible.builtin.debug:
     msg: >-
-      Note: Log rotation only applies to newly created containers.
-      Recreate existing containers (docker compose up -d --force-recreate)
-      for the new limits to take effect.
+      daemon.json changed on {{ inventory_hostname }} but docker was NOT
+      restarted (docker_daemon_allow_restart is false). The new daemon settings
+      are inert until someone runs `sudo systemctl restart docker` at a moment
+      of their choosing — on loki-logging hosts this is deliberate, see
+      roles/docker_log_rotation/README.md.
+  when:
+    - docker_daemon_write.changed
+    - not (docker_daemon_allow_restart | bool)
+
+- name: Note that log limits only apply to new containers
+  ansible.builtin.debug:
+    msg: >-
+      Note: log rotation settings only apply to newly created containers.
+      Recreate existing ones (docker compose up -d --force-recreate) for the
+      new limits to take effect.

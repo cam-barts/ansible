@@ -1,0 +1,77 @@
+# {{ ansible_managed }}
+# borgmatic config for warrig → gastown push. Rendered by Ansible role
+# borgmatic_warrig. Edit the role defaults/host_vars, not this file directly
+# — the next playbook run will clobber hand edits.
+#
+# Hand-debugging entry points:
+#   sudo {{ borgmatic_run_script_path }}
+#   sudo borgmatic --config {{ borgmatic_config_path }} create --dry-run -v 1
+
+source_directories:
+{% for d in borgmatic_source_directories %}
+    - {{ d | tojson }}
+{% endfor %}
+
+repositories:
+    - path: {{ borgmatic_repo_url | tojson }}
+      label: {{ borgmatic_repo_label }}
+
+# Path to borg on the remote (gastown) side. gastown's nux shell doesn't have
+# /usr/local/bin on its non-interactive PATH so borg needs an explicit path.
+remote_path: {{ borgmatic_remote_path | tojson }}
+
+# Encryption passphrase. Read from {{ borgmatic_passphrase_file }} at run time
+# so it lands neither in this config nor in version control. That file is
+# populated by Ansible from the ansible-vault var
+# `{{ borgmatic_passphrase_var }}`.
+encryption_passcommand: {{ borgmatic_encryption_passcommand | tojson }}
+
+exclude_patterns:
+{% for p in borgmatic_excludes %}
+    - {{ p | tojson }}
+{% endfor %}
+
+exclude_caches: true
+exclude_if_present:
+    - .nobackup
+    - CACHEDIR.TAG
+one_file_system: false
+
+compression: {{ borgmatic_compression }}
+
+# Retention.
+keep_daily: {{ borgmatic_keep_daily }}
+keep_weekly: {{ borgmatic_keep_weekly }}
+keep_monthly: {{ borgmatic_keep_monthly }}
+keep_yearly: {{ borgmatic_keep_yearly }}
+
+# Consistency checks. data = block-level integrity, extract = full-restore
+# rehearsal. Cadence matches citadel.
+checks:
+{% for c in borgmatic_consistency_checks %}
+    - name: {{ c.name }}
+      frequency: {{ c.frequency }}
+{% endfor %}
+
+# Hooks. No DB dumps on warrig (see defaults/main.yml, "databases") — the only
+# before-hook is the system-state export, which replaces the one-time manual
+# `before_backup` edit the old README asked for.
+#
+# The trailing "|| true" is load-bearing: borgmatic aborts the whole run if any
+# before-hook command exits non-zero — including 126/127 if the script goes
+# missing or loses its exec bit. A stumble in the state export must never cost
+# us the filesystem backup.
+commands:
+    - before: action
+      when: [create]
+      run:
+          - "{{ borgmatic_export_script_path }} || true"
+
+    # ntfy on error. The "when:" list is what the deprecated on_error option
+    # normalizes to — without it the hook also fires for interactive
+    # list/info/mount failures and pages Cam at
+    # {{ borgmatic_ntfy_priority_fail }} priority for a typo'd archive name.
+    - after: error
+      when: [create, prune, compact, check]
+      run:
+          - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Warrig)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,warrig,warning {{ borgmatic_ntfy_topic }} 'warrig→gastown borg push failed — see {{ borgmatic_log_path }}'"

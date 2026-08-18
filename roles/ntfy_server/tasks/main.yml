@@ -1,0 +1,42 @@
+---
+# Prereq: the Docker SDK for Python, required by community.docker modules.
+# Only this step needs privilege; the docker_* tasks run as the login user
+# (pirate), which is in the `docker` group.
+
+- name: Update apt cache (ignore errors from broken repos)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  failed_when: false
+
+- name: Install Docker SDK for Python
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+  become: true
+
+- name: Ensure the ntfy data and cache directories exist
+  ansible.builtin.file:
+    path: "{{ ntfy_server_dir }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - data
+    - cache
+
+- name: Template server.yml
+  ansible.builtin.template:
+    src: server.yml.j2
+    dest: "{{ ntfy_server_dir }}/data/server.yml"
+    mode: "0644"
+
+- name: Pull ntfy image
+  community.docker.docker_image:
+    name: "{{ ntfy_server_image }}:{{ ntfy_server_version }}"
+    source: pull
+
+- name: Run ntfy container
+  community.docker.docker_container:
+    name: "{{ ntfy_server_container_name }}"
+  args: "{{ ntfy_server_container_spec }}"

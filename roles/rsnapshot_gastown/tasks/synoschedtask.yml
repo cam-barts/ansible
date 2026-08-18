@@ -11,36 +11,37 @@
 # Format verified against /usr/syno/etc/synoschedule.d/root/{4,5,6,7}.task
 # on gastown 2026-05-12.
 
-- name: "synoschedtask {{ task.id }} - stat the .task file"
-  stat:
+- name: "Stat the .task file for synoschedtask {{ task.id }}"
+  ansible.builtin.stat:
     path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
   register: synoschedtask_stat
 
-- name: "synoschedtask {{ task.id }} - skip block if the file is not present"
+- name: "Rewrite (if present) synoschedtask {{ task.id }}"
   when: synoschedtask_stat.stat.exists
   block:
 
-    - name: "synoschedtask {{ task.id }} - back up the original once"
-      copy:
+    - name: "Back up the original once for synoschedtask {{ task.id }}"
+      ansible.builtin.copy:
         src: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
         dest: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task.pre-ansible.bak"
         remote_src: true
         force: false
+        mode: "0644"
 
-    - name: "synoschedtask {{ task.id }} - rewrite the action= line"
-      replace:
+    - name: "Rewrite the action= line of synoschedtask {{ task.id }}"
+      ansible.builtin.replace:
         path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
         regexp: '^action=#common:run#:.*$'
         replace: "action=#common:run#: {{ rsnapshot_wrapper_path }} {{ task.interval }}"
 
-    - name: "synoschedtask {{ task.id }} - rewrite the script field in app args"
-      replace:
+    - name: "Rewrite the script field in app args of synoschedtask {{ task.id }}"
+      ansible.builtin.replace:
         path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
         regexp: '("script":")[^"]*(")'
         replace: '\1{{ rsnapshot_wrapper_path }} {{ task.interval }}\2'
 
-    - name: "synoschedtask {{ task.id }} - rewrite the base64 cmd= line"
-      replace:
+    - name: "Rewrite the base64 cmd= line of synoschedtask {{ task.id }}"
+      ansible.builtin.replace:
         path: "/usr/syno/etc/synoschedule.d/root/{{ task.id }}.task"
         regexp: '^cmd=.*$'
         replace: "cmd={{ (rsnapshot_wrapper_path ~ ' ' ~ task.interval) | b64encode }}"

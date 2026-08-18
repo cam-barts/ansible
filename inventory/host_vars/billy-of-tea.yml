@@ -1,1 +1,6 @@
 ansible_become: true
+# Canonical ansible_host for billy-of-tea. Verified correct 2026-08-17; every
+# inventory file that lists this host (raspberrypis, node_exporter,
+# backup_targets) leaves ansible_host unset so this is the single source of
+# truth under both `-i inventory/<file>` and `-i inventory/` directory mode.
+ansible_host: 192.168.1.82

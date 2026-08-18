@@ -139,6 +139,7 @@
     dest: "{{ borgmatic_config_path }}.pre-ansible.bak"
     remote_src: true
     force: false
+    mode: "0600"
   failed_when: false
 
 - name: Render borgmatic config
@@ -177,7 +178,7 @@
 - name: Install borgmatic-export-system-state.sh
   ansible.builtin.template:
     src: borgmatic-export-system-state.sh.j2
-    dest: /usr/local/bin/borgmatic-export-system-state.sh
+    dest: "{{ borgmatic_export_script_path }}"
     owner: root
     group: root
     mode: "0750"
@@ -190,7 +191,7 @@
 - name: Install borgmatic-run.sh wrapper
   ansible.builtin.template:
     src: borgmatic-run.sh.j2
-    dest: /usr/local/bin/borgmatic-run.sh
+    dest: "{{ borgmatic_run_script_path }}"
     owner: root
     group: root
     mode: "0750"
@@ -230,8 +231,8 @@
 # --- cron -------------------------------------------------------------------
 - name: Schedule daily borgmatic run via cron
   ansible.builtin.cron:
-    name: "borgmatic citadel→gastown daily"
+    name: "{{ borgmatic_cron_name }}"
     user: "{{ borgmatic_cron_user }}"
     hour: "{{ borgmatic_cron_hour }}"
     minute: "{{ borgmatic_cron_minute }}"
-    job: "/usr/local/bin/borgmatic-run.sh >> /var/log/borgmatic.log 2>&1"
+    job: "{{ borgmatic_run_script_path }} >> {{ borgmatic_log_path }} 2>&1"

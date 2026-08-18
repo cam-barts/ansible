@@ -1,0 +1,29 @@
+---
+# The container spec, in one place, same convention as roles/cadvisor.
+
+ntfy_server_container_spec:
+  name: "{{ ntfy_server_container_name }}"
+  image: "{{ ntfy_server_image }}:{{ ntfy_server_version }}"
+  state: started
+  restart_policy: "{{ ntfy_server_restart_policy }}"
+  command:
+    - serve
+  user: "{{ ntfy_server_uid }}:{{ ntfy_server_gid }}"
+  env:
+    TZ: "{{ ntfy_server_timezone }}"
+    NTFY_BASE_URL: "{{ ntfy_server_base_url }}"
+    NTFY_WEB_PUSH_PUBLIC_KEY: "{{ ntfy_server_web_push_public_key }}"
+    NTFY_WEB_PUSH_PRIVATE_KEY: "{{ ntfy_server_web_push_private_key }}"
+    NTFY_WEB_PUSH_FILE: /var/cache/ntfy/webpush.db
+    NTFY_WEB_PUSH_EMAIL_ADDRESS: "{{ ntfy_server_web_push_email_address }}"
+  volumes:
+    - "{{ ntfy_server_dir }}/cache:/var/cache/ntfy"
+    - "{{ ntfy_server_dir }}/data:/etc/ntfy"
+  published_ports:
+    - "{{ ntfy_server_port }}:80"
+  # Live container was created by docker compose with an empty HostIp; the
+  # module would otherwise normalize to 0.0.0.0 and force a recreate of the
+  # host every alert flows through. Same trap as cadvisor_publish_host_ip.
+  default_host_ip: ""
+  networks:
+    - name: "{{ ntfy_server_network }}"

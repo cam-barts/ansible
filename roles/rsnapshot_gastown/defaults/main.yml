@@ -46,10 +46,13 @@ rsnapshot_retain_daily: 7
 rsnapshot_retain_weekly: 4
 rsnapshot_retain_monthly: 12
 
-# Logging — verbose=4/loglevel=4 to surface per-source rsync chatter while
-# the new config beds in. Drop to 2/3 once stable.
-rsnapshot_verbose: 4
-rsnapshot_loglevel: 4
+# Logging — dropped to 2/3 on 2026-08-17. The temporary 4/4 was there to
+# surface per-source rsync chatter while the config bedded in; it has, and the
+# per-file chatter had grown /var/log/rsnapshot on gastown to 1.1G unrotated.
+# verbose=2 logs each rsnapshot command, loglevel=3 keeps warnings/errors in
+# the logfile. Raise back to 4/4 temporarily when debugging a specific source.
+rsnapshot_verbose: 2
+rsnapshot_loglevel: 3
 
 # SSH key gastown uses to pull from each source. Same key already trusts
 # warrig and the Pis.

@@ -1,0 +1,5 @@
+- name: Deploy ntfy server
+  hosts: ntfy_server
+  gather_facts: true
+  roles:
+    - ntfy_server

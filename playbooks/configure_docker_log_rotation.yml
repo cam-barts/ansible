@@ -1,5 +1,18 @@
-- name: Configure Docker log rotation on Raspberry Pis
-  hosts: raspberrypis
+---
+# The docker_log_rotation role now manages the whole of /etc/docker/daemon.json
+# (name kept to avoid churning references — see the role README). Default
+# target stays the Pis, whose json-file 10m x 3 config is unchanged.
+#
+# `docker_daemon_target` lets a single host be targeted without adding an
+# inventory group for the Arch docker hosts:
+#   ansible-playbook -e docker_daemon_target=warrig \
+#       playbooks/configure_docker_log_rotation.yml
+#
+# Run with --check --diff first on anything that isn't a Pi: to_nice_json
+# re-sorts and re-indents, so a hand-written daemon.json shows a
+# formatting-only diff the first time.
+- name: Configure Docker daemon config (log rotation + per-host daemon.json)
+  hosts: "{{ docker_daemon_target | default('raspberrypis') }}"
   gather_facts: false
   roles:
     - docker_log_rotation

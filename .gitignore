@@ -5,3 +5,6 @@
 .vault_pass
 *.vault_pass
 .vault-password
+
+# ansible-lint installs collections + caches here when run from the repo root
+.ansible/

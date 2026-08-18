@@ -1,22 +1,154 @@
 ---
-# borgmatic_warrig — minimal role: drop the system-state export script and the
-# directory it writes into, so warrig's existing borgmatic run captures Arch
-# machine-shape state (package lists, pacman/mirror config, fstab, enabled
-# units, etc.) into every archive — same as citadel already does.
+# borgmatic_warrig — full config management for warrig's daily push to gastown.
 #
-# SCOPE (deliberately narrow — see "Borgmatic Package-list Export" plan, Phase 2):
-#   This role does NOT own /etc/borgmatic/config.yaml. Warrig's borgmatic config
-#   is still hand-managed there. This role only installs the export script and
-#   creates the state directory. The one-time before_backup wiring is a manual
-#   edit documented in README.md (we don't blind-mutate the hand-managed config).
+# Adapted from borgmatic_citadel. Deliberately a COPY of citadel's templates
+# rather than a shared/generic role: the two hosts diverge on sources, DB
+# hooks and schedule, and a two-consumer generic role is not worth the
+# indirection. If a third borgmatic host ever appears, revisit.
+#
+# !! READ roles/borgmatic_warrig/README.md BEFORE THE FIRST APPLY. !!
+# warrig's live /etc/borgmatic/config.yaml is root-only and was never captured
+# into git. These values are reconstructed from citadel's role (which was
+# itself written to mirror warrig) and are NOT verified against the live file.
+# The first run MUST be `--check --diff --ask-become-pass` so the diff reveals
+# the live config, and any divergence folded back into this file.
 
-# System-state capture directory. User-owned (nux:nux 0750) under $HOME so it
-# rides along in warrig's existing /home/nux home-dir backup source.
+# --- repo -------------------------------------------------------------------
+# Existing repo on gastown. The role does NOT re-init it (borgmatic info
+# probes first, and the init marker guards); it only ever adopts it.
+borgmatic_repo_url: "ssh://nux@gastown.shadeking.cam.local/volume1/NetBackup/borg_backup_warrig"
+borgmatic_repo_label: warrig
+
+borgmatic_config_dir: /etc/borgmatic
+borgmatic_config_path: "{{ borgmatic_config_dir }}/config.yaml"
+
+# --- passphrase -------------------------------------------------------------
+# REQUIREMENT — NOT YET IN THE VAULT.
+# inventory/group_vars/borgmatic_source/vault.yml currently holds exactly one
+# key: `vault_borgmatic_passphrase`, which is CITADEL's repo passphrase. warrig
+# has a pre-existing repo with its own passphrase; writing citadel's into
+# warrig's passphrase file would break every warrig backup.
+#
+# So this role reads a separate `vault_borgmatic_warrig_passphrase` and asserts
+# on it. Cam must add it once:
+#
+#   ansible-vault edit inventory/group_vars/borgmatic_source/vault.yml
+#   # add:  vault_borgmatic_warrig_passphrase: <warrig's existing passphrase>
+#
+# The value is warrig's CURRENT passphrase (from KeePassXC / the live
+# /etc/borgmatic/config.yaml passcommand target) — this is an adoption, not a
+# rotation. Getting it wrong makes the repo unopenable, not silently broken:
+# the next run fails loudly via ntfy.
+borgmatic_passphrase_var: vault_borgmatic_warrig_passphrase
+borgmatic_passphrase_file: "{{ borgmatic_config_dir }}/passphrase"
+borgmatic_encryption_passcommand: "cat {{ borgmatic_passphrase_file }}"
+
+# Set false to leave the live passphrase file untouched (useful for the first
+# reconcile run, before the vault var exists). The assert is skipped too.
+borgmatic_manage_passphrase: true
+
+# --- SSH trust warrig→gastown -----------------------------------------------
+# warrig→gastown already works by hand today, via some key the role does not
+# know about. This creates a dedicated per-job key, same as citadel's, and
+# points root's ssh at it with IdentitiesOnly. The playbook's second play
+# installs the pubkey on gastown, so run BOTH plays or the push loses its
+# existing identity. See README.
+borgmatic_ssh_key_path: /root/.ssh/borg_gastown
+borgmatic_ssh_remote_user: nux
+borgmatic_ssh_remote_host: gastown.shadeking.cam.local
+borgmatic_manage_ssh_config: true
+
+# gastown's nux shell has no /usr/local/bin on its non-interactive PATH.
+borgmatic_remote_path: /usr/local/bin/borg
+
+# --- state ------------------------------------------------------------------
+borgmatic_state_dir: /var/lib/borgmatic
+borgmatic_init_marker: "{{ borgmatic_state_dir }}/.initialized"
+
+# System state capture directory. nux:nux 0750, under $HOME so it rides in the
+# /home/nux source. Populated by the before-create hook.
 borgmatic_system_state_dir: /home/nux/.system-state
-
-# Where the export script lands. Root-owned 0750 to match citadel.
-borgmatic_export_script_path: /usr/local/bin/borgmatic-export-system-state.sh
-
-# Owner of the state dir (the user whose $HOME borgmatic already backs up).
 borgmatic_state_owner: nux
 borgmatic_state_group: nux
+borgmatic_export_script_path: /usr/local/bin/borgmatic-export-system-state.sh
+borgmatic_run_script_path: /usr/local/bin/borgmatic-run.sh
+
+# --- schedule ---------------------------------------------------------------
+# 04:00. The slot is documented from the other side: borgmatic_citadel's
+# defaults and README both pin citadel at 03:00 "offset from warrig's 04:00 so
+# gastown isn't servicing two concurrent receivers". warrig's live crontab is
+# root-owned and unreadable without sudo, so 04:00 is inherited from that note,
+# not observed. Confirm with `sudo crontab -l` during the reconcile run.
+borgmatic_cron_hour: 4
+borgmatic_cron_minute: 0
+borgmatic_cron_user: root
+borgmatic_cron_name: "borgmatic warrig→gastown daily"
+borgmatic_log_path: /var/log/borgmatic.log
+
+# --- sources ----------------------------------------------------------------
+# /home/nux is the load-bearing one (warrig is Cam's workstation; the compose
+# tree lives at /home/nux/docker_services, not /home/nux/docker — the
+# /home/docker path in daemon.json is the docker data-root and is deliberately
+# NOT a source). ~/.system-state is already inside /home/nux, listed only for
+# the reader's benefit — borgmatic dedupes overlapping sources.
+borgmatic_source_directories:
+  - /etc
+  - /home/nux
+
+# Exclude patterns. Conservative on purpose: excluding too little only costs
+# repo space, excluding too much loses data. Only obviously-derivable trees are
+# here. warrig's live list is almost certainly longer (/home/nux is ~110G with
+# docker_services alone at 76G) — harvest the real list from the --check --diff
+# output and fold it in before the first real apply.
+#
+# Size survey 2026-08-17, candidates NOT excluded because they may be real
+# data Cam wants kept — decide during reconcile:
+#   /home/nux/Downloads 13G, /home/nux/Music 14G, /home/nux/Android 3.3G,
+#   /home/nux/.thunderbird 4.2G, /home/nux/.zen 4.9G, /home/nux/flutter 6.0G,
+#   /home/nux/docker_services/immich 25G (photos — keep),
+#   /home/nux/docker_services/hoarder 12G, .../surrealdb 7.8G
+borgmatic_excludes:
+  - "*/.cache/*"
+  - "*/node_modules/*"
+  - "*/__pycache__/*"
+  - "*/.venv/*"
+  - "*/venv/*"
+  - "*/.npm/*"
+  - "*/.local/share/Trash/*"
+  - "*/tmp/*"
+  - "*/.tmp/*"
+  # Ollama model blobs — 14G, re-pullable from the registry.
+  - "/home/nux/docker_services/ollama-gpt/*/models/*"
+
+# --- borg knobs (match citadel) ---------------------------------------------
+borgmatic_compression: "zstd,10"
+
+borgmatic_keep_daily: 7
+borgmatic_keep_weekly: 4
+borgmatic_keep_monthly: 6
+borgmatic_keep_yearly: 1
+
+borgmatic_consistency_checks:
+  - {name: data, frequency: "2 weeks"}
+  - {name: extract, frequency: "1 month"}
+
+# --- ntfy -------------------------------------------------------------------
+# Topic is a GUESS following citadel's `[redacted-vaulted-topic]` convention. warrig's
+# live config may publish somewhere else entirely (nux's user crontab on warrig
+# publishes to `sre_events`, for one). The --check --diff output shows the live
+# topic — confirm before applying, or backup alerts go to a topic nobody is
+# subscribed to, which is the one failure mode that fails silently.
+borgmatic_ntfy_bin: /usr/bin/ntfy
+borgmatic_ntfy_topic: warrig_events
+borgmatic_ntfy_priority_start: min
+borgmatic_ntfy_priority_ok: default
+borgmatic_ntfy_priority_fail: urgent
+
+# --- databases --------------------------------------------------------------
+# Intentionally none. warrig runs plenty of containerised DBs (immich_postgres,
+# atuin-postgresql, hoppscotch-postgres, plausible_db, surrealdb, meilisearch,
+# ...) but nothing in this repo or its git history says warrig ever dumped
+# them, and inventing dump hooks for ~8 containers unasked is how a 10-minute
+# before-hook stall lands on top of citadel's 03:00 window. If Cam wants them,
+# port borgmatic_citadel's borgmatic-dump-dbs.sh + borgmatic_databases wholesale
+# — it is already parameterised for exactly this.

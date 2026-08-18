@@ -1,0 +1,27 @@
+---
+# Promtail container settings. Mirrors the live /home/pirate/promtail/ setup
+# on the Pi fleet (see README) so the first apply is a no-op except for the
+# image tag pin below.
+
+promtail_image: grafana/promtail
+
+# Live containers run `grafana/promtail:latest`. Resolved 2026-08-17: that tag
+# and `3.6.8` point at the identical manifest-list digest
+# (sha256:6cfa64ec432b24a912d640e2edb940eeae2666f61861a66c121d763dd7241381), so
+# pinning to `3.6.8` recreates the container exactly once (tag change is still
+# a config difference to docker_container) and never again drifts silently on
+# an upstream `latest` push. json-file log driver on the Pis, so that one
+# recreate is safe — see README.
+promtail_version: "3.6.8"
+
+promtail_container_name: promtail
+promtail_restart_policy: unless-stopped
+
+# Directory holding docker-compose.yml (untouched) and promtail-config.yml
+# (templated by this role) on the target. Matches the live layout so the
+# config bind mount source is unchanged.
+promtail_config_dir: /home/pirate/promtail
+
+# Loki push target. Identical across the fleet today.
+promtail_loki_url: "http://citadel.shadeking.cam.local:3100"
+promtail_citadel_ip: 192.168.1.88

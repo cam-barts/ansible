@@ -31,20 +31,69 @@
     name: "{{ cadvisor_image }}:{{ cadvisor_version }}"
     source: pull
 
+- name: Read the docker daemon's default logging driver
+  community.docker.docker_host_info:
+  register: cadvisor_host_info
+
+# docker_container recreates (stop -> rm -> create) on any config difference.
+# On warrig/citadel dockerd defaults to the `loki` log driver, where tearing a
+# container down deadlocks the daemon. So on those hosts, dry-run the exact
+# same spec first and refuse instead of hanging. Deliberately over-broad: a
+# network connect/disconnect shows up in `differences` without being a
+# recreate, and that just means an extra (safe) refusal.
+- name: Dry-run the cAdvisor container spec to detect a forced recreate
+  community.docker.docker_container:
+    name: "{{ cadvisor_container_name }}"
+  args: "{{ cadvisor_container_spec }}"
+  check_mode: true
+  diff: true
+  changed_when: false
+  register: cadvisor_dry_run
+  when:
+    - not cadvisor_allow_recreate
+    - cadvisor_host_info.host_info.LoggingDriver | default('') == 'loki'
+
+- name: Refuse to recreate the cAdvisor container under the loki log driver
+  ansible.builtin.fail:
+    msg: >-
+      Applying this role to {{ inventory_hostname }} would recreate the
+      `{{ cadvisor_container_name }}` container, and this host's dockerd
+      defaults to the `loki` log driver, where stopping/removing a container
+      deadlocks — the play would hang, not fail. Differing settings:
+      {{ cadvisor_dry_run.diff.differences | default([]) }}{{
+      ' (image differs)' if cadvisor_dry_run.diff.image_different | default(false) else '' }}.
+      Either set host_vars to match the live container (see the role README) or,
+      if you really do want the container rebuilt, set
+      cadvisor_allow_recreate: true and be ready to unwedge dockerd.
+  when: >-
+    (cadvisor_dry_run.diff.differences | default([]) | length > 0)
+    or (cadvisor_dry_run.diff.image_different | default(false))
+
 - name: Run cAdvisor container
   community.docker.docker_container:
     name: "{{ cadvisor_container_name }}"
-    image: "{{ cadvisor_image }}:{{ cadvisor_version }}"
-    state: started
-    restart_policy: "{{ cadvisor_restart_policy }}"
-    memory: "{{ cadvisor_memory }}"
-    devices:
-      - /dev/kmsg:/dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    published_ports: "{{ [cadvisor_port ~ ':8080'] if cadvisor_publish_port else omit }}"
-    networks: "{{ cadvisor_networks if (cadvisor_networks | length > 0) else omit }}"
-    command: "{{ ['--docker_only=true'] if cadvisor_docker_only else omit }}"
+  args: "{{ cadvisor_container_spec }}"
+
+# cAdvisor v0.52.1 asks dockerd for /info once, with a hardcoded 10s timeout,
+# and never retries; on a host restoring dozens of containers at boot it loses
+# that race and then runs without the docker factory forever. The unit restarts
+# it once dockerd has settled. Only enabled, never started here: starting it
+# would `docker restart cadvisor`, which is a teardown, which on a loki host is
+# the deadlock above.
+- name: Install the cAdvisor boot-fix unit
+  ansible.builtin.template:
+    src: cadvisor-boot-fix.service.j2
+    dest: /etc/systemd/system/cadvisor-boot-fix.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: cadvisor_boot_fix
+
+- name: Enable the cAdvisor boot-fix unit
+  ansible.builtin.systemd_service:
+    name: cadvisor-boot-fix.service
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: cadvisor_boot_fix

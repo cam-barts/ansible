@@ -72,12 +72,12 @@ first hand-review without granting any key access.
 
 ## Usage
 
-```yaml
-- hosts: gastown
-  roles:
-    - dsm_config_audit
+```sh
+ansible-playbook playbooks/configure_dsm_config_audit.yml
 ```
 
-Authoring only — not yet wired into a playbook or applied. Pairs with the
-Windmill `dsm-config-audit` flow (Phase 2). Confirm the DSM 7.3 `synofirewall`
-subcommand before relying on the firewall surface.
+Wired into `playbooks/configure_dsm_config_audit.yml`, hosts: `synology`.
+Live on gastown — the export script is deployed and the forced-command
+Windmill key is in place. Pairs with the Windmill `dsm-config-audit` flow
+(Phase 2). Confirm the DSM 7.3 `synofirewall` subcommand before relying on
+the firewall surface.

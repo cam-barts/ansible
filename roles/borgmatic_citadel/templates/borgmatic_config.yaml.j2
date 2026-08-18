@@ -15,7 +15,7 @@ source_directories:
 
 repositories:
     - path: {{ borgmatic_repo_url | tojson }}
-      label: citadel
+      label: {{ borgmatic_repo_label }}
 
 # Encryption passphrase. Pulled from {{ borgmatic_passphrase_file }} at run
 # time so the passphrase is not embedded in this config or version control.
@@ -78,7 +78,7 @@ commands:
       when: [create]
       run:
           - "/usr/local/bin/borgmatic-dump-dbs.sh || true"
-          - "/usr/local/bin/borgmatic-export-system-state.sh || true"
+          - "{{ borgmatic_export_script_path }} || true"
 
     - after: action
       when: [create]
@@ -93,4 +93,4 @@ commands:
     - after: error
       when: [create, prune, compact, check]
       run:
-          - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see /var/log/borgmatic.log'"
+          - "{{ borgmatic_ntfy_bin }} publish -t 'Borg Backup FAILED (Citadel)' -p {{ borgmatic_ntfy_priority_fail }} --tags=backup,citadel,warning {{ borgmatic_ntfy_topic }} 'citadel→gastown borg push failed — see {{ borgmatic_log_path }}'"

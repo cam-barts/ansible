@@ -1,72 +1,154 @@
 # borgmatic_warrig
 
-Minimal companion role to **warrig's hand-managed borgmatic**. It installs the
-Arch system-state export script and the `~/.system-state/` directory it writes
-into, so warrig captures the same machine-shape recovery state that
-`borgmatic_citadel` captures (Phase 1 of the *Borgmatic Package-list Export*
-plan). Phase 2 = this role.
+Codifies warrig's daily borg push to gastown — the counterpart to
+`borgmatic_citadel`. warrig runs at **04:00**, citadel at 03:00, so gastown is
+never servicing two concurrent receivers.
+
+---
+
+## ⚠️ READ THIS BEFORE THE FIRST APPLY
+
+**This role adopts a hand-managed config it has never been able to read.**
+
+warrig's live `/etc/borgmatic/config.yaml` is root-only (`0600`) and was never
+captured into git. Everything in `defaults/main.yml` is *reconstructed* from
+`borgmatic_citadel` — which was itself written to mirror warrig — plus what
+could be observed without sudo. It is **not** verified against the live file.
+
+So the first pass is a reconnaissance run, not a config write (one deliberate
+exception: the SSH keygen task runs even under `--check` so later tasks can
+read the pubkey — it drops an inert, not-yet-authorized keypair at
+`/root/.ssh/borg_gastown`):
+
+```sh
+ANSIBLE_ROLES_PATH=./roles ansible-playbook \
+    --check --diff --ask-become-pass \
+    playbooks/configure_borgmatic_warrig.yml
+```
+
+The `--diff` on the "Render borgmatic config" task prints the **live config**
+as the "before" side. That output is the authority. Reconcile it into
+`defaults/main.yml` — specifically:
+
+| What | Why it matters |
+|---|---|
+| `exclude_patterns` | `/home/nux` is ~110G (`docker_services` alone is 76G). The defaults here are deliberately short; the live list is almost certainly longer. Getting this wrong bloats the repo on gastown. |
+| `borgmatic_ntfy_topic` | Defaults to `warrig_events` by convention only. If live publishes elsewhere, alerts go to a topic nobody subscribes to — the one failure mode that fails **silently**. |
+| `encryption_passcommand` | If live doesn't use `cat /etc/borgmatic/passphrase`, the passphrase plumbing here is wrong. |
+| `source_directories` | Confirm `/etc` + `/home/nux` is the real set. |
+| cron slot | 04:00 is inherited from citadel's role notes, not observed. `sudo crontab -l`. |
+
+Only after the diff is reconciled should the apply run without `--check`.
+
+The role does back itself up: `/etc/borgmatic/config.yaml.pre-ansible.bak` is
+written once (`force: false`) before the template lands.
+
+---
+
+## One-time prerequisites
+
+### 1. Vault variable — **REQUIRED, NOT PRESENT TODAY**
+
+`inventory/group_vars/borgmatic_source/vault.yml` currently contains exactly
+one key: `vault_borgmatic_passphrase` — that is **citadel's** repo passphrase.
+warrig has a pre-existing repo with its own passphrase; reusing citadel's would
+make warrig's archives unopenable.
+
+Cam must add warrig's **existing** passphrase (this is an adoption, not a
+rotation — pull the value from KeePassXC or from `sudo cat
+/etc/borgmatic/config.yaml`):
+
+```sh
+ansible-vault edit inventory/group_vars/borgmatic_source/vault.yml
+# add:
+#   vault_borgmatic_warrig_passphrase: <warrig's existing passphrase>
+```
+
+The role asserts on this and fails with the same instructions. To run the
+reconcile pass *before* adding it, pass `-e borgmatic_manage_passphrase=false`
+— the assert and the passphrase write are both skipped.
+
+### 2. Inventory
+
+`inventory/hosts` carries everything: warrig is in `[borgmatic_source]`
+alongside citadel, so `group_vars/borgmatic_source/vault.yml` binds to it
+directly — no inventory stacking, no explicit `-e @vault` needed. gastown's
+Python 3.12 interpreter pin lives in `host_vars/gastown.yml`.
+
+### 3. Existing root crontab
+
+The role adds a *named* cron entry. Any hand-made borgmatic line already in
+root's crontab survives, giving warrig two daily runs. `borgmatic-run.sh` takes
+a `flock`, but the old line probably invokes `borgmatic` directly and bypasses
+it. Check `sudo crontab -l` and delete the hand-made line after the first
+successful managed run.
+
+---
 
 ## What it does
 
-1. Creates `/home/nux/.system-state/` (`nux:nux`, `0750`) — rides in warrig's
-   existing `/home/nux` backup source, so its contents land in every archive.
-2. Installs `/usr/local/bin/borgmatic-export-system-state.sh` (`root:root`,
-   `0750`) — byte-identical to citadel's. Captures explicit/foreign/orphan
-   pacman lists, full `pacman -Qi` metadata, `pacman.conf`, `mirrorlist`,
-   `fstab`, enabled systemd units, `timedatectl`, and hostname.
-3. Removes the legacy `borgmatic-export-pkglists.sh` if a previous attempt left
-   one behind.
+1. `pacman -S borgmatic borg` (no-op — both already present on warrig).
+2. Renders `/etc/borgmatic/config.yaml` (root `0600`), gated by
+   `borgmatic config validate -c %s` so a malformed template never lands.
+3. Writes `/etc/borgmatic/passphrase` (root `0600`) from
+   `vault_borgmatic_warrig_passphrase`; the config's `encryption_passcommand`
+   cats it, so the secret is in neither the config nor git.
+4. Generates `/root/.ssh/borg_gastown` (ed25519), renders a matching
+   `Host gastown.shadeking.cam.local` block into `/root/.ssh/config` with
+   `IdentitiesOnly yes`, and seeds known_hosts with one `BatchMode` probe.
+   The playbook's **second play** installs that pubkey into `nux`'s
+   `authorized_keys` on gastown — the two plays are a matched pair. Running
+   only the first pins root's gastown ssh to a key gastown hasn't accepted yet.
+   `-e borgmatic_manage_ssh_config=false` skips the ssh-config half if the
+   existing hand-made trust should be left alone.
+5. Installs `/usr/local/bin/borgmatic-export-system-state.sh` and wires it into
+   the config's `before: action` hook (`|| true`, so a stumble in the export
+   never aborts the backup). This **replaces** the manual `before_backup` edit
+   the previous version of this README documented — no hand edits needed now.
+6. Installs `/usr/local/bin/borgmatic-run.sh` — `flock`'d, with an explicit
+   start/ok/fail ntfy chain so a partial pipe can't fire "ok" on a real failure.
+7. Adopts (never re-inits) the existing repo: `borgmatic info` probes first, and
+   `/var/lib/borgmatic/.initialized` guards afterwards.
+8. Root cron: daily 04:00 → `borgmatic-run.sh`, logging to
+   `/var/log/borgmatic.log`.
 
-## What it deliberately does NOT do
+## Databases: none, deliberately
 
-This role does **not** render `/etc/borgmatic/config.yaml`. Warrig's borgmatic
-config is still hand-managed there, and codifying the whole thing is explicitly
-out of scope for this pass (see the plan's "Out of scope" item #2 and premortem).
-Because of that, the `before_backup` hook is **not** auto-wired — blindly
-mutating a hand-managed, backup-load-bearing YAML file we haven't captured is
-the kind of change that can silently break backups. So the wiring is a
-documented one-time manual edit below.
+warrig runs a pile of containerised DBs (`immich_postgres`,
+`atuin-postgresql-1`, `hoppscotch-postgres-1`, `plausible-plausible_db-1`,
+`surrealdb`, `ansible-semaphore-postgres-1`, meilisearch, redis/valkey …).
+Nothing in this repo or its git history indicates warrig ever dumped them, so
+none are configured here — inventing ~8 dump hooks unasked is how a multi-minute
+before-hook stall ends up overlapping citadel's 03:00 window on the same target.
 
-## Wiring the hook (one-time manual edit on warrig)
-
-After applying this role, edit `/etc/borgmatic/config.yaml` on warrig and add
-two things:
-
-```yaml
-source_directories:
-    # ...existing entries...
-    - /home/nux/.system-state        # capture machine-shape state
-
-# borgmatic >= 1.8 style:
-before_backup:
-    # ...existing entries...
-    - /usr/local/bin/borgmatic-export-system-state.sh
-```
-
-(If warrig's borgmatic uses the newer `commands:` block instead of top-level
-`before_backup:`, add the script as a `before: action` entry there instead —
-match whatever shape the existing config already uses.)
-
-Then verify the hook fires and the files land, without touching the real repo:
-
-```sh
-sudo /usr/local/bin/borgmatic-export-system-state.sh   # run the script once
-ls -la /home/nux/.system-state/                        # confirm files appear
-sudo borgmatic --config /etc/borgmatic/config.yaml create --dry-run -v 1
-```
+`borgmatic_citadel` already has the full pattern (`borgmatic-dump-dbs.sh`,
+`borgmatic-cleanup-dumps.sh`, split inner/outer `timeout`, terminator checks,
+degraded-not-failed ntfy path) parameterised by a `borgmatic_databases` list.
+Porting it here is a copy job if/when Cam wants it. **Open question for Cam.**
 
 ## Apply
 
 ```sh
-ansible-playbook -i inventory/backup_targets playbooks/configure_borgmatic_warrig.yml
+ANSIBLE_ROLES_PATH=./roles ansible-playbook \
+    --ask-become-pass \
+    playbooks/configure_borgmatic_warrig.yml
 ```
 
-(warrig lives in the `arch_backup_targets` group of `inventory/backup_targets`.)
+Verify without touching the repo:
 
-## Once warrig's config is eventually codified
+```sh
+sudo /usr/local/bin/borgmatic-export-system-state.sh
+ls -la /home/nux/.system-state/
+sudo borgmatic --config /etc/borgmatic/config.yaml create --dry-run -v 1
+```
 
-If/when Cam decides to promote warrig's `/etc/borgmatic/config.yaml` into a full
-Ansible-owned template (the open question on the plan page), fold the
-`before_backup` entry and the `source_directories` line into that template and
-drop the manual step above. At that point this role can either merge into the
-config role or stay as the script-only piece it depends on.
+## Live state observed 2026-08-17 (no sudo)
+
+- `borgmatic`, `borg`, `ntfy` all present at `/usr/bin/`.
+- `borgmatic.timer` exists but is **disabled** — scheduling is via root cron
+  (unreadable without sudo), consistent with what this role installs.
+- `/usr/local/bin/` holds only `piactl` and `uvx` — the export script and run
+  wrapper have never been applied.
+- `/var/lib/borgmatic`, `/home/nux/.system-state`, `/var/log/borgmatic.log` do
+  not exist yet. The last one means the live cron line logs somewhere else;
+  worth confirming so two log paths don't diverge.

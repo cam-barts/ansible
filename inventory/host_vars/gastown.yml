@@ -4,3 +4,9 @@
 # Sudo isn't configured for nux on gastown (`sudo -n whoami` → "a password
 # is required") and intentionally isn't needed here.
 ansible_become: false
+
+# DSM's stock `python3` is 3.8.15, below the 3.9 floor that ansible-core 2.20
+# requires on a target, so the default interpreter discovery fails the version
+# check after connecting. The `python312` DSM package is installed and gives
+# 3.12.12 here.
+ansible_python_interpreter: /usr/local/bin/python3.12

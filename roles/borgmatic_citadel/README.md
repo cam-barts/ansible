@@ -51,7 +51,7 @@ See `defaults/main.yml`. The two you're most likely to override per host:
 ```yaml
 borgmatic_source_directories:  # what to capture
   - /etc
-  - /home/nux/docker_services
+  - /home/nux/docker
   - /home/nux/.config
   ...
 
@@ -98,12 +98,11 @@ playbook run time.
 ```sh
 # Dry-run
 ANSIBLE_ROLES_PATH=./roles ansible-playbook \
-    -i inventory/borgmatic_citadel --check --diff \
+    --check --diff \
     playbooks/configure_borgmatic_citadel.yml
 
 # Apply
 ANSIBLE_ROLES_PATH=./roles ansible-playbook \
-    -i inventory/borgmatic_citadel \
     playbooks/configure_borgmatic_citadel.yml
 ```
 
@@ -111,23 +110,9 @@ The vault password file is auto-resolved via `ansible.cfg`'s
 `vault_password_file = .vault_pass`. Pass `--vault-password-file` if you're
 running from elsewhere.
 
-`inventory/borgmatic_citadel` defines the two groups this playbook needs:
-`[citadel]` for the push source, `[gastown]` for the receive end (used by
-the second play to install the SSH pubkey).
-
-## Alternative secret stores
-
-`encryption_passcommand: cat /etc/borgmatic/passphrase` is the simplest
-option that works on a headless server. Two alternatives if Cam ever wants
-to harden:
-
-- **libsecret / secret-tool.** Requires a running keyring; awkward for
-  root-cron. Skip unless citadel grows a user-session keyring.
-- **Windmill-pulled.** Have a Windmill resource hold the passphrase and
-  pull it via a Windmill API call from a small wrapper script. Cleaner
-  rotation story; couples backup health to Windmill being up. Worth
-  considering only if Cam wants a single source of truth for secrets
-  across the fleet.
+`inventory/hosts` carries everything the playbook needs: citadel in
+`[borgmatic_source]` (binds the vault passphrase) and gastown in `[synology]`
+(the receive end, used by the second play to install the SSH pubkey).
 
 ## Not handled here
 

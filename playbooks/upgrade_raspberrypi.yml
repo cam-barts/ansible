@@ -5,4 +5,4 @@
   serial: 1
   become: true
   roles:
-    - role: ../roles/dist_upgrade
+    - role: dist_upgrade

@@ -1,0 +1,32 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Re-register cAdvisor's Docker factory after dockerd finishes restoring containers
+# cAdvisor probes dockerd's /info exactly once at startup, with a hardcoded 10s
+# timeout, and never retries. On boot it is itself restored by dockerd alongside
+# every other container, asks too early, times out, and then runs permanently
+# without the Docker factory -- publishing cgroup-path-only metrics with no
+# `name` label while still passing its own (liveness-only) healthcheck.
+# v0.52.1 has no flag to extend that timeout or force a retry, so restarting it
+# once dockerd has settled is the only fix.
+After=docker.service
+Requires=docker.service
+
+[Service]
+# Type=simple (not oneshot): a blocking oneshot would hold up multi-user.target
+# -- and on a graphical host, login -- for as long as dockerd takes to settle
+# (~3.5 min on warrig). Type=simple is considered started immediately, so the
+# wait happens in the background and boot is not delayed.
+Type=simple
+RuntimeMaxSec=300
+ExecStart=/usr/bin/bash -c '\
+  until /usr/bin/docker info >/dev/null 2>&1; do sleep 2; done; \
+  prev=-1; \
+  while :; do \
+    n=$(/usr/bin/docker ps -q | wc -l); \
+    [ "$n" -eq "$prev" ] && break; \
+    prev=$n; sleep 5; \
+  done; \
+  /usr/bin/docker restart {{ cadvisor_container_name }}'
+
+[Install]
+WantedBy=multi-user.target

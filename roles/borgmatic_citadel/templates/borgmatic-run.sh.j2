@@ -45,6 +45,6 @@ else
         -p {{ borgmatic_ntfy_priority_fail }} \
         --tags=backup,citadel,warning \
         "$topic" \
-        "citadel→gastown borg push exited $rc — see /var/log/borgmatic.log" >/dev/null 2>&1 || true
+        "citadel→gastown borg push exited $rc — see {{ borgmatic_log_path }}" >/dev/null 2>&1 || true
     exit "$rc"
 fi

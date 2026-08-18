@@ -1,5 +1,12 @@
-- name: restart docker
-  systemd:
+---
+# Gated on docker_daemon_allow_restart (default false). Restarting dockerd on a
+# host using the loki log driver risks a deadlock: the driver ships logs to a
+# Loki container supervised by the very daemon being restarted. When the flag is
+# false the handler no-ops and tasks/main.yml warns that a manual restart is
+# owed.
+- name: Restart docker
+  ansible.builtin.systemd:
     name: docker
     state: restarted
   become: true
+  when: docker_daemon_allow_restart | bool

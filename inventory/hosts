@@ -1,0 +1,72 @@
+# The one canonical inventory. ansible.cfg points at inventory/, so no -i
+# is needed for any playbook; blast radius comes from each playbook's
+# `hosts:` pattern (plus --limit when you want it narrower).
+#
+# Collapsed from six per-playbook files on 2026-08-17 — four of the old
+# groups were pure aliases (pis≡raspberrypis, arch_backup_targets≡archlinux,
+# borgmatic_target≡synology). Per-host connection details (ansible_host IPs,
+# become, python interpreter) live in inventory/host_vars/<name>.yml.
+
+# Ungrouped: the HTB pwnbox. Named "pwnbox" (not 127.0.0.1) so ansible-pull's
+# implicit localhost/127.0.0.1 limit on other hosts can never match it; no
+# group needed — configure_pwnbox.yml targets the host name directly.
+pwnbox ansible_connection=local
+
+[raspberrypis]
+black-pearl
+wellerman
+billy-of-tea
+
+[raspberrypis:vars]
+ansible_user=pirate
+ansible_ssh_private_key_file=~/.ssh/rsnapshot_key
+
+[archlinux]
+citadel ansible_host=citadel.shadeking.cam.local
+warrig  ansible_host=warrig.shadeking.cam.local
+
+[archlinux:vars]
+ansible_user=nux
+
+[synology]
+gastown ansible_host=gastown.shadeking.cam.local
+
+[synology:vars]
+ansible_user=nux
+ansible_ssh_private_key_file=~/.ssh/rsnapshot_key
+
+# --- role/playbook target groups -------------------------------------------
+
+[node_exporter:children]
+raspberrypis
+archlinux
+
+# cAdvisor container hosts. Currently the Pis; warrig/citadel run it
+# out-of-band — see roles/cadvisor/README.md to fold them in (their
+# host_vars already carry the no-op values).
+[cadvisor:children]
+raspberrypis
+
+# Promtail → Loki log shippers. Same coverage rule as cadvisor.
+[promtail:children]
+raspberrypis
+
+# The ntfy server every alert in the lab flows through.
+[ntfy_server]
+black-pearl
+
+# Best-effort firewalld rule model, authored blind (root-only live rules).
+[firewalld:children]
+archlinux
+
+# Hosts gastown's rsnapshot pulls from.
+[backup_targets:children]
+raspberrypis
+archlinux
+
+# Hosts that push borg to gastown. group_vars/borgmatic_source/vault.yml
+# (borgmatic passphrases) binds here — citadel's and warrig's borgmatic
+# roles both assert their own vault var out of it.
+[borgmatic_source]
+citadel
+warrig

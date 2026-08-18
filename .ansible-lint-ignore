@@ -1,0 +1,4 @@
+# One 259-char shell one-liner inside a block scalar (bunkerweb mariadb dump
+# invocation). Breaking it would change the rendered dump script that is
+# byte-reconciled against live citadel; not worth the churn.
+roles/borgmatic_citadel/defaults/main.yml yaml[line-length]

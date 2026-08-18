@@ -1,16 +1,41 @@
 ---
-# Apply the minimal borgmatic_warrig role (system-state export script + dir).
+# Two-play sequence, mirroring configure_borgmatic_citadel.yml:
+#   1. warrig — install borgmatic, render config + scripts, generate
+#      warrig→gastown SSH key, write the vault passphrase, adopt the repo,
+#      install the 04:00 cron entry.
+#   2. gastown — install the warrig pubkey into nux's authorized_keys so the
+#      daily cron push from warrig can land.
 #
-#   ansible-playbook -i inventory/backup_targets playbooks/configure_borgmatic_warrig.yml
+# The pubkey is registered as a fact on warrig (set_fact at the end of the
+# role tasks), then read via hostvars in the gastown play. Run BOTH plays:
+# play 1 pins root's gastown ssh to the new key with IdentitiesOnly, and play 2
+# is what makes gastown accept it.
 #
-# warrig is in the arch_backup_targets group of inventory/backup_targets. This
-# playbook intentionally does NOT touch /etc/borgmatic/config.yaml or the
-# warrig->gastown SSH trust (both already exist, hand-managed). After applying,
-# do the one-time before_backup wiring documented in
-# roles/borgmatic_warrig/README.md, then `borgmatic ... create --dry-run`.
-- name: Install system-state export on warrig's borgmatic
+# ⚠️ FIRST RUN MUST BE --check --diff. This role adopts a hand-managed
+# /etc/borgmatic/config.yaml that has never been readable from here; the diff
+# is the only way to see it. See roles/borgmatic_warrig/README.md.
+#
+#   ANSIBLE_ROLES_PATH=./roles ansible-playbook \
+#       --check --diff --ask-become-pass \
+#       playbooks/configure_borgmatic_warrig.yml
+#
+# inventory/hosts (the ansible.cfg default) has warrig in [borgmatic_source],
+# so the vault group_vars bind without any -i or -e stacking.
+
+- name: Configure borgmatic on warrig for daily push to gastown
   hosts: warrig
   become: true
   gather_facts: true
   roles:
     - borgmatic_warrig
+
+- name: Authorize warrig's borgmatic key on gastown
+  hosts: gastown
+  gather_facts: false
+  tasks:
+    - name: Install warrig→gastown pubkey for nux on gastown
+      ansible.posix.authorized_key:
+        user: "{{ hostvars['warrig'].borgmatic_ssh_remote_user | default('nux') }}"
+        key: "{{ hostvars['warrig'].borgmatic_ssh_public_key }}"
+        state: present
+        comment: "borgmatic warrig→gastown"

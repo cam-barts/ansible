@@ -1,0 +1,5 @@
+- name: Deploy Promtail
+  hosts: promtail
+  gather_facts: true
+  roles:
+    - promtail

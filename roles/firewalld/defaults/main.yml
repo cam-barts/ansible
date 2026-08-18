@@ -1,0 +1,24 @@
+---
+# Best-effort firewalld rule model for warrig + citadel, authored blind (no
+# sudo, so the live root-only ruleset was never read). See README before
+# first apply — Cam must reconcile with `sudo firewall-cmd --list-all`.
+
+# Matches roles/ufw/defaults/main.yml's ufw_citadel_ip.
+firewalld_citadel_ip: 192.168.1.88
+
+# Additive rich rules: {port, proto, source[, hosts]}. `hosts` (list of
+# inventory_hostname) restricts a rule to specific play hosts; omit to apply
+# on every host the role runs against.
+#
+# cadvisor's 8080 is warrig-only: citadel's cadvisor listens on the internal
+# monitoring_default docker network, not a published host port (see
+# roles/cadvisor/README.md), so there's no port to open on citadel for it.
+firewalld_rich_rules:
+  - port: "9100"
+    proto: tcp
+    source: "{{ firewalld_citadel_ip }}"
+  - port: "8080"
+    proto: tcp
+    source: "{{ firewalld_citadel_ip }}"
+    hosts:
+      - warrig

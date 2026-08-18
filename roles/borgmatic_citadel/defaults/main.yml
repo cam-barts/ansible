@@ -36,6 +36,14 @@ borgmatic_system_state_dir: /home/nux/.system-state
 borgmatic_cron_hour: 3
 borgmatic_cron_minute: 0
 borgmatic_cron_user: root
+borgmatic_cron_name: "borgmatic citadel→gastown daily"
+
+# Paths + label, parameterized to match borgmatic_warrig's shape so the
+# twin roles stay diff-able. Values are the historical literals.
+borgmatic_repo_label: citadel
+borgmatic_export_script_path: /usr/local/bin/borgmatic-export-system-state.sh
+borgmatic_run_script_path: /usr/local/bin/borgmatic-run.sh
+borgmatic_log_path: /var/log/borgmatic.log
 
 # Sources. /etc and the docker_services tree are the load-bearing state.
 # ~/.config selectively included via excludes filter below.

@@ -11,13 +11,3 @@ ntfy_client_default_host: https://ntfy.coder.cam
 # ntfy_client_default_user: ""
 # ntfy_client_default_password: ""
 # ntfy_client_default_token: ""
-# Some ntfy CLI builds only check the per-user config path
-# (~/.config/ntfy/client.yml), not the system /etc/ntfy/client.yml. To make
-# the config work for root-via-cron AND interactive user invocations, the
-# role drops the config into selected home dirs too.
-#
-# Always done for root (where wrapper scripts / cron jobs run as).
-# Additional users (interactive shells, scheduled user jobs, etc.) listed
-# in `ntfy_client_user_homes` get the same config rendered into
-# `~<user>/.config/ntfy/client.yml`.
-ntfy_client_user_homes: []
