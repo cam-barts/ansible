@@ -23,6 +23,44 @@ topic="{{ rsnapshot_ntfy_topic }}"
 # this lived under nux's home on /dev/md0.
 exec >"{{ rsnapshot_wrapper_out_path }}" 2>&1
 
+# Serialise the intervals against each other.
+#
+# rsnapshot uses ONE lockfile for all four intervals ({{ rsnapshot_lockfile }}),
+# and on contention it does not wait: add_lockfile() prints "Lockfile ... exists
+# and so does its process, can not continue" and exits 1 before touching a
+# single source. Exit 1 is rsnapshot's generic fatal code, so it lands in the
+# else branch below and pages as FAILED, which is exactly the false alarm the
+# April 13 rewrite above was meant to stop.
+#
+# That collision is structural, not occasional. Measured 2026-08-18: hourly
+# fires at :00 every hour and took 23 to 50 minutes across twelve consecutive
+# runs, while daily fires at a fixed :20. The shortest hourly run already
+# outlasts daily's offset, so daily loses the race every day. Observed
+# 00:00:02 hourly started, 00:20:04 daily started, 00:20:06 daily FAILED,
+# 00:34:28 hourly finished.
+#
+# WAIT, do not skip. The sibling borgmatic-run.sh uses `flock -n` and exits,
+# which is right there because borgmatic has a single daily schedule and a
+# skipped run is just a duplicate. Here the intervals are retention tiers: a
+# skipped daily means daily.0 never rotates and that day's tier is lost
+# silently. Waiting costs a delayed snapshot; skipping costs a missing one.
+# flock queues, so daily simply starts when hourly finishes and the next
+# hourly queues behind it in turn.
+exec 9>"{{ rsnapshot_wrapper_lockfile }}"
+if ! flock -w {{ rsnapshot_lock_wait_seconds }} 9; then
+    # Could not get in within the window. Not a backup failure, so not a page,
+    # but a tier really did not run: if this shows up repeatedly, hourly has
+    # grown past the point where the schedule fits and the DSM times need
+    # spreading out.
+    "$ntfy" publish \
+        -t "rsnapshot $interval skipped" \
+        -p {{ rsnapshot_ntfy_priority_warn }} \
+        --tags=backup,hourglass \
+        "$topic" \
+        "rsnapshot $interval waited {{ rsnapshot_lock_wait_seconds }}s for another interval to finish and gave up; no snapshot taken for this tier" >/dev/null 2>&1 || true
+    exit 0
+fi
+
 "$ntfy" publish \
     -t "rsnapshot $interval started" \
     -p {{ rsnapshot_ntfy_priority_start }} \

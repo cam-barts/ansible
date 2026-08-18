@@ -15,6 +15,20 @@ rsnapshot_snapshot_root: /volume1/NetBackup/pi_rsnapshots/
 rsnapshot_config_path: /var/services/homes/nux/rsnapshot.conf
 rsnapshot_lockfile: /var/services/homes/nux/rsnapshot.pid
 
+# Wrapper-level lock, separate from rsnapshot's own. rsnapshot shares one
+# lockfile across all four intervals and aborts with exit 1 rather than
+# waiting, which pages as FAILED. The wrapper takes this lock first and waits,
+# so overlapping intervals queue instead of colliding. See
+# templates/rsnapshot-run.sh.j2 for the measurements behind this.
+rsnapshot_wrapper_lockfile: /var/services/homes/nux/rsnapshot-run.lock
+
+# How long an interval waits for the lock before giving up and reporting
+# "skipped" at the warn priority. One hour: comfortably longer than the
+# slowest hourly observed (50 min on 2026-08-18) so a normal queue always
+# clears, short enough that a genuinely stuck run cannot stack invocations
+# indefinitely. flock is util-linux 2.33.2 on gastown, verified present.
+rsnapshot_lock_wait_seconds: 3600
+
 # Excludes file. Tiny and read on every rsnapshot invocation, so stays on
 # the system fs next to the config rather than chasing it out to /volume1.
 # Currently scopes warrig's symlink-loop paths (/home/home/, /home/nux/home/)
