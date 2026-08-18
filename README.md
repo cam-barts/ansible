@@ -77,9 +77,28 @@ narrow it further.
 
 ## Running
 
-Semaphore is the runner. It clones this repo from GitHub on `main`, and every
-playbook above has a template, so a run is a button press and the output lands
-in the task log.
+Semaphore is the runner. It clones this repo from GitHub on `main`, and most
+playbooks have a template, so a run is a button press and the output lands in
+the task log.
+
+Two playbooks deliberately have **no** template, and should not be given one:
+
+- `configure_pwnbox.yml`. `pwnbox` is `ansible_connection=local`, so a
+  Semaphore run targets the Semaphore container itself, and the role deletes
+  `~/.bashrc` and `~/.profile` before stowing dotfiles over the top. The same
+  trap applies to running it from a shell on warrig, where it targets warrig.
+- `upgrade_raspberrypi.yml`. A fleet-wide distro upgrade wants a human
+  watching for prompts, not a button. Run it from a shell.
+
+`prune_docker.yml` does have one, marked DESTRUCTIVE, with an acknowledgement
+box. Note that box is friction, not enforcement: Semaphore requires a
+non-empty value but does not validate it, and the playbook ignores the
+variable entirely.
+
+`configure_docker_log_rotation.yml` needs one template per target, because its
+`hosts:` is `{{ docker_daemon_target | default('raspberrypis') }}` and
+`--limit` can only narrow a pattern, never widen it. There are three: the Pi
+default, plus warrig and citadel passing `--extra-vars docker_daemon_target=`.
 
 Three consequences of Semaphore owning execution:
 
@@ -92,8 +111,22 @@ Three consequences of Semaphore owning execution:
   environment. `.vault_pass` is gitignored, so it is never in the clone.
 
 citadel and warrig have no passwordless sudo, so any play with `become` needs
-the Become key configured on the Semaphore inventory. The Pis and gastown do
-not need it (gastown sets `ansible_become: false`).
+a Become key on the Semaphore inventory. The Pis and gastown do not need it
+(gastown sets `ansible_become: false`).
+
+**That key does not exist yet, and it is the one thing blocking Semaphore from
+running most of this.** Inventory `lab-hosts` has `become_key_id: null`, and
+the symptom is a run that succeeds on the Pis and fails on the two Arch hosts
+with `Missing sudo password`. Confirmed against a real task log, not inferred.
+Create a `login_password` credential holding the sudo password and set it as
+the inventory's Become key.
+
+Until then these templates fail on citadel and warrig: node_exporter,
+firewalld, backup_targets, ntfy_client, both borgmatic templates, cAdvisor
+(warrig only), and the two per-host docker log rotation ones. This predates
+warrig gaining `ansible_become: true`; citadel was already affected. The
+warrig change widens which plays attempt escalation, it did not create the
+gap.
 
 Running from a shell still works, and is the better choice for a first apply
 or anything you want to watch closely:
