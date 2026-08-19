@@ -23,5 +23,17 @@
 - name: Track citadel's cloudflared tunnel configuration
   hosts: citadel
   gather_facts: false
+  # citadel's host_vars sets ansible_become: true for the fleet-wide roles, but
+  # nothing here needs root: the compose file and the cloudflared config are all
+  # nux-owned, and nux is in the docker group. Dropping it here keeps this play
+  # to least privilege and means it needs no become password at all.
+  #
+  # It has to be the VARIABLE at play level, not `become: false`. A task-level
+  # or play-level `become:` keyword loses to the ansible_become host_var (the
+  # repo README documents that, and it is what broke ntfy_client on warrig).
+  # Play vars outrank inventory host_vars, so setting the variable does work.
+  # Verified: `id -un` returns nux.
+  vars:
+    ansible_become: false
   roles:
     - cloudflared
