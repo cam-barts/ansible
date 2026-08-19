@@ -1,0 +1,25 @@
+---
+# Tracks citadel's Cloudflare tunnel config in git and deploys the two vaulted
+# credential files at their exact modes (0400 credentials JSON, 0600 origin
+# token). Takes NO container action and has no handlers.
+#
+# cloudflared is a service of the BunkerWeb compose project (see
+# playbooks/configure_bunkerweb_stack.yml), so restarting or recreating it drops
+# the tunnel and with it every externally reachable hostname in the lab. A
+# config change here needs a deliberate, hand-run reload afterwards, with a way
+# to unwedge dockerd if it hangs.
+#
+# DNS (the two wildcard CNAME anchors) and the auto-ban pipeline are documented
+# in the role README rather than managed. See roles/cloudflared/README.md.
+#
+#   ansible-playbook --check --diff playbooks/configure_cloudflared.yml
+#   ansible-playbook playbooks/configure_cloudflared.yml
+#
+# Secrets live in inventory/host_vars/citadel/vault.yml. The credential tasks
+# are no_log, so --diff will not print them.
+
+- name: Track citadel's cloudflared tunnel configuration
+  hosts: citadel
+  gather_facts: false
+  roles:
+    - cloudflared

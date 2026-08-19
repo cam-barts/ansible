@@ -1,0 +1,32 @@
+---
+# Tracks citadel's BunkerWeb compose file in git and renders it from the
+# vaulted secrets. Takes NO container action: the role writes the file, then
+# dry-runs the stack and FAILS if `docker compose up` would recreate anything.
+#
+# That refusal is the point. BunkerWeb is the sole ingress for every proxied
+# hostname (~48) and the cloudflared tunnel is a service inside the same compose
+# project, so a recreate drops external access to the whole lab; citadel's
+# dockerd also defaults to the `loki` log driver, where tearing a container down
+# can deadlock the daemon. Reconciliation is a deliberate human step.
+#
+# A pending recreate is normal here and does not mean the file drifted:
+# Watchtower deliberately keeps cloudflare/cloudflared:latest current for
+# security fixes, and each update leaves a stale com.docker.compose.image label
+# that compose compares in addition to the config hash. See the role README.
+#
+#   ansible-playbook --check --diff playbooks/configure_bunkerweb_stack.yml
+#   ansible-playbook playbooks/configure_bunkerweb_stack.yml
+#
+# To actually reconcile, be at the keyboard and ready to unwedge dockerd:
+#   ansible-playbook playbooks/configure_bunkerweb_stack.yml \
+#       -e bunkerweb_allow_recreate=true
+# ...which only silences the guard. The role still never runs `up` for you.
+#
+# Secrets live in inventory/host_vars/citadel/vault.yml. --diff is suppressed on
+# the template task so it cannot print them.
+
+- name: Track citadel's BunkerWeb compose stack
+  hosts: citadel
+  gather_facts: false
+  roles:
+    - bunkerweb_stack

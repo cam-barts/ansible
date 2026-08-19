@@ -70,24 +70,32 @@ external access to everything.
 
 ## The guard
 
-`docker compose up` recreates a service when the config hash it computes from
-the compose file differs from the `com.docker.compose.config-hash` label on the
-running container. The guard asks that same question directly:
+`community.docker.docker_compose_v2` in `check_mode`, which resolves to
+`docker compose up --dry-run`: compose prints the plan and exits without
+touching the daemon. If it reports any work to do, the role fails with the list
+rather than letting a later run carry it out.
 
-- `community.docker.docker_host_info` reads the daemon's default log driver and
-  the live containers (with `verbose_output: true`, because the trimmed output
-  drops `Labels`).
-- If, and only if, the driver is `loki`, `docker compose config --hash="*"`
-  renders the file and prints the desired hashes. That subcommand creates,
-  starts, stops and removes nothing.
-- Any live container whose hash is no longer in that output means a recreate is
-  pending, and the role fails with the list of affected services.
+Two details that are easy to get wrong:
 
-`bunkerweb_allow_recreate: true` disarms it. Note the `| bool` on every use of
-that variable in `tasks/main.yml`: extra vars arrive as strings and every
-non-empty string is truthy, so a bare truth test would treat
-`-e bunkerweb_allow_recreate=false` as "yes, disarm the guard". Same trap, same
-handling, as `roles/cadvisor`.
+- The condition keys on `.actions`, **not** `.changed`. The dry-run task sets
+  `changed_when: false` so it never pollutes the play recap, and that also
+  forces `.changed` to `False` even when compose has work queued. Measured: a
+  perturbed compose file produced `changed=False` with `actions=8`. Gating on
+  `.changed` is a guard that can never fire, and it looks correct.
+- `| bool` on every read of `bunkerweb_allow_recreate`. Extra vars arrive as
+  strings and every non-empty string is truthy, so a bare truth test would treat
+  `-e bunkerweb_allow_recreate=false` as "yes, disarm the guard". Same trap and
+  same handling as `roles/cadvisor`.
+
+Unlike `roles/cadvisor` this is not gated on the `loki` log driver. The deadlock
+is only half the reason to refuse; the other half is that recreating anything in
+this project drops the Cloudflare tunnel and every proxied hostname, which is
+true on any log driver. Refusing unconditionally is simpler and safer.
+
+This replaced a hand-rolled version that shelled out to `docker compose config
+--hash="*"` and diffed the hashes against the containers' labels in Jinja. It
+computed the right answer, but it reimplemented what the module already does in
+check mode, in about 35 more lines.
 
 ### Why a recreate can be pending when nothing here changed
 
