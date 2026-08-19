@@ -83,8 +83,11 @@ checks:
 # abort the filesystem backup. borgmatic aborts the run if ANY before-hook
 # command exits non-zero, including 126/127 if a script goes missing or loses
 # its exec bit, so the guarantee lives here at the config level rather than
-# depending on every script staying well-behaved forever. A failed dump still
-# alerts (ntfy) and leaves a DUMP-FAILED marker; see borgmatic-dump-dbs.sh.
+# depending on every script staying well-behaved forever.
+{% if borgmatic_databases | length > 0 %}
+# A failed dump still alerts (ntfy) and leaves a DUMP-FAILED marker; see
+# borgmatic-dump-dbs.sh.
+{% endif %}
 commands:
     - before: action
       when: [create]
