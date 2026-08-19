@@ -35,6 +35,17 @@
 #     `cadvisor_allow_recreate`, and clearing it needs a docker daemon
 #     restart. A fleet-wide run-once has no such guard, because Watchtower
 #     decides what to recreate, not this playbook.
+#
+#     This is no longer hypothetical. On the first real run, 2026-08-19,
+#     citadel came back `failed=2 scanned=28 updated=10`: mariadb:11 had
+#     been republished, Watchtower stopped bunkerweb-bw-db-1 and its start
+#     call timed out with `context deadline exceeded` against the socket.
+#     portainer-agent-1 hit the same timeout and recovered on its own; bw-db
+#     did not, and the prune then deleted the stopped replacement. The
+#     bunkerweb_bw-data volume survived untouched, so recovery was one
+#     `docker compose up -d bw-db`. The prune also wedged on citadel for
+#     30+ minutes holding the image-store lock, with `docker version`
+#     answering while `docker images` hung.
 #   - Semaphore itself runs on warrig (semaphoreui/semaphore:v2.19.8, plus
 #     its postgres:18). Both are in scope. Those are pinned tags so they
 #     should not move, but if either tag is ever republished, Watchtower
@@ -78,6 +89,12 @@
     # fails with "Missing sudo password" and the Pis still escalate to root.
     # Play vars outrank host_vars, so this form actually wins. Verified.
     ansible_become: false
+
+    # Lazily evaluated: only resolved where it is referenced below, which is
+    # after watchtower_run is registered. logrus writes to stderr, confirmed
+    # against the real run, but concatenating both streams means a future
+    # switch to stdout cannot silently blind the checks.
+    watchtower_log: "{{ watchtower_run.stdout ~ watchtower_run.stderr }}"
   tasks:
     - name: Run Watchtower once to update running containers
       ansible.builtin.command:
@@ -90,16 +107,37 @@
           - ghcr.io/nicholas-fedor/watchtower:latest
           - --run-once
       register: watchtower_run
-      # Watchtower ends a session with a logrus summary line:
-      #   msg="Session done" Failed=0 Scanned=47 Updated=0
-      # `Updated=[1-9]` matches 1 and 47 but not 0. logrus writes to stderr,
-      # so check both streams. If upstream ever changes that line this
-      # degrades to reporting "ok" on a run that did update something; the
-      # prune task below still reports the real work, and the task log has
-      # the full output either way.
-      changed_when: >-
-        watchtower_run.stdout is search('Updated=[1-9]')
-        or watchtower_run.stderr is search('Updated=[1-9]')
+      # The real summary line, copied from a live run on 2026-08-19:
+      #   msg="Update session completed" failed=2 notify=no scanned=28 updated=10
+      # Match the FIELDS, never the message text. The first version of this
+      # matched `Updated=[1-9]` from the old containrrr wording, which the
+      # nicholas-fedor fork does not emit: it is `updated=`, lowercase, after
+      # a different message. Nothing matched, so a run that recreated 20
+      # containers across the fleet and failed 2 on citadel reported green
+      # `ok` on all five hosts.
+      changed_when: watchtower_log is search('updated=[1-9]')
+      # Fail closed, and note this replaces the default rc check, so rc is
+      # tested explicitly. Three ways to fail:
+      #
+      #   1. rc != 0                  - docker run itself failed.
+      #   2. no `updated=` at all     - the summary was not found, so this
+      #      parse is wrong again. Refuse to continue rather than assume
+      #      success: an unparsed run must never reach the prune below.
+      #   3. failed=[1-9]             - Watchtower could not update something.
+      #
+      # (3) is the one that matters. Watchtower exits 0 even when containers
+      # fail, and a failed update leaves the replacement container in
+      # `created` state. `docker system prune -af` deletes non-running
+      # containers, so on 2026-08-19 the prune destroyed bunkerweb-bw-db-1
+      # after Watchtower's start call hit `context deadline exceeded` on
+      # citadel's loki-driver socket. The data survived only because there is
+      # no --volumes. Failing here removes the host from the play, so the
+      # prune never runs over a broken update and the container stays
+      # recoverable with a plain `docker start`.
+      failed_when: >-
+        watchtower_run.rc != 0
+        or watchtower_log is not search('updated=')
+        or watchtower_log is search('failed=[1-9]')
 
     - name: Prune unused images, stopped containers, networks and build cache
       # -f because there is no TTY to answer the confirmation prompt, -a to

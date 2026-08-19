@@ -1,0 +1,48 @@
+---
+# Verify the changed_when/failed_when expressions against REAL captured
+# Watchtower output, plus the failure modes they are meant to catch.
+- name: Test watchtower result parsing
+  hosts: localhost
+  gather_facts: false
+  vars:
+    watchtower_log: "{{ case.out }}"
+    cases:
+      # Real line from citadel, 2026-08-19 (the one that broke bw-db).
+      - name: citadel real - 10 updated, 2 failed
+        out: 'msg="Update session completed" failed=2 notify=no scanned=28 updated=10'
+        want_changed: true
+        want_failed: true
+      # Real line from billy-of-tea, same run.
+      - name: pi real - 1 updated, none failed
+        out: 'msg="Update session completed" failed=0 notify=no scanned=4 updated=1'
+        want_changed: true
+        want_failed: false
+      - name: nothing to do
+        out: 'msg="Update session completed" failed=0 notify=no scanned=6 updated=0'
+        want_changed: false
+        want_failed: false
+      # The old containrrr wording this playbook originally assumed. Must now
+      # fail loudly rather than silently report ok.
+      - name: unparseable summary (old wording)
+        out: 'msg="Session done" Failed=0 Scanned=47 Updated=3'
+        want_changed: false
+        want_failed: true
+      - name: empty output
+        out: ""
+        want_changed: false
+        want_failed: true
+  tasks:
+    - name: Evaluate each case
+      ansible.builtin.assert:
+        that:
+          - (watchtower_log is search('updated=[1-9]')) == case.want_changed
+          - >-
+            (0 != 0
+             or watchtower_log is not search('updated=')
+             or watchtower_log is search('failed=[1-9]')) == case.want_failed
+        success_msg: "OK: {{ case.name }}"
+        fail_msg: "MISMATCH: {{ case.name }}"
+      loop: "{{ cases }}"
+      loop_control:
+        loop_var: case
+        label: "{{ case.name }}"
