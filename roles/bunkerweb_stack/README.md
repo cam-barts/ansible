@@ -75,17 +75,18 @@ external access to everything.
 touching the daemon. If it reports any work to do, the role fails with the list
 rather than letting a later run carry it out.
 
-Two details that are easy to get wrong:
+Two things here are load-bearing and look optional.
 
-- The condition keys on `.actions`, **not** `.changed`. The dry-run task sets
-  `changed_when: false` so it never pollutes the play recap, and that also
-  forces `.changed` to `False` even when compose has work queued. Measured: a
-  perturbed compose file produced `changed=False` with `actions=8`. Gating on
-  `.changed` is a guard that can never fire, and it looks correct.
-- `| bool` on every read of `bunkerweb_allow_recreate`. Extra vars arrive as
-  strings and every non-empty string is truthy, so a bare truth test would treat
-  `-e bunkerweb_allow_recreate=false` as "yes, disarm the guard". Same trap and
-  same handling as `roles/cadvisor`.
+The condition keys on `.actions`, not `.changed`. The dry-run task sets
+The dry-run task sets `changed_when: false` so it stays out of the play recap,
+and that also pins `.changed` to `False` even when compose has work queued. A
+perturbed compose file measured `changed=False` with `actions=8`. Gate on
+`.changed` and you get a guard that cannot fire and reads as correct.
+
+And `| bool` on every read of `bunkerweb_allow_recreate`. Extra vars arrive as
+strings, every non-empty string is truthy, so a bare truth test takes
+`-e bunkerweb_allow_recreate=false` to mean "yes, disarm the guard". Same trap
+and same handling as `roles/cadvisor`.
 
 Unlike `roles/cadvisor` this is not gated on the `loki` log driver. The deadlock
 is only half the reason to refuse; the other half is that recreating anything in

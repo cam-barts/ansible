@@ -1,22 +1,24 @@
 ---
-# Tracks citadel's Cloudflare tunnel config in git and deploys the two vaulted
-# credential files at their exact modes (0400 credentials JSON, 0600 origin
-# token). Takes NO container action and has no handlers.
+# The constraint first, because it shapes everything this playbook does and
+# doesn't do: cloudflared is not a standalone container. It is a service of the
+# BunkerWeb compose project (playbooks/configure_bunkerweb_stack.yml), and it is
+# the only inbound path to citadel. Restart it and every externally reachable
+# hostname in the lab goes with it, briefly at best.
 #
-# cloudflared is a service of the BunkerWeb compose project (see
-# playbooks/configure_bunkerweb_stack.yml), so restarting or recreating it drops
-# the tunnel and with it every externally reachable hostname in the lab. A
-# config change here needs a deliberate, hand-run reload afterwards, with a way
-# to unwedge dockerd if it hangs.
-#
-# DNS (the two wildcard CNAME anchors) and the auto-ban pipeline are documented
-# in the role README rather than managed. See roles/cloudflared/README.md.
+# So this renders config.yml and drops the two credential files in place at the
+# modes the tunnel expects (0400 for the credentials JSON, 0600 for the origin
+# token). It stops there. No handlers, no restart, no reload. If you change the
+# config you reload cloudflared yourself, deliberately, ready to unwedge dockerd
+# if it hangs on citadel's loki log driver.
 #
 #   ansible-playbook --check --diff playbooks/configure_cloudflared.yml
 #   ansible-playbook playbooks/configure_cloudflared.yml
 #
-# Secrets live in inventory/host_vars/citadel/vault.yml. The credential tasks
-# are no_log, so --diff will not print them.
+# Two pieces of this setup are written down rather than managed: the wildcard
+# CNAME anchors, and the BunkerWeb -> Grafana -> Windmill auto-ban pipeline.
+# roles/cloudflared/README.md explains why for each.
+#
+# The credential tasks are no_log, so --diff will not print them.
 
 - name: Track citadel's cloudflared tunnel configuration
   hosts: citadel
