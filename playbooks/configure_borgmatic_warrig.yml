@@ -13,9 +13,10 @@
 # before anything reaches across.
 #
 # The reconcile against warrig's previously-unreadable /etc/borgmatic/config.yaml
-# is done (2026-08-18); defaults/main.yml carries the real values. A --check
-# --diff pass is now optional verification rather than discovery. Note the SSH
-# keygen task carries check_mode: false, so even a check run writes the keypair.
+# is done (2026-08-18); inventory/host_vars/warrig.yml carries the real values.
+# A --check --diff pass is now optional verification rather than discovery. Note
+# the SSH keygen task carries check_mode: false, so even a check run writes the
+# keypair.
 #
 #   ANSIBLE_ROLES_PATH=./roles ansible-playbook \
 #       --ask-become-pass \
@@ -23,7 +24,7 @@
 #
 # Before the first real apply, delete the hand-made 04:00 line from root's
 # crontab on warrig or the host ends up with two concurrent nightly runs.
-# See roles/borgmatic_warrig/README.md.
+# See roles/borgmatic/README.md.
 #
 # inventory/hosts (the ansible.cfg default) has warrig in [borgmatic_source],
 # so the vault group_vars bind without any -i or -e stacking. gastown must be
@@ -36,4 +37,4 @@
   become: true
   gather_facts: true
   roles:
-    - borgmatic_warrig
+    - borgmatic

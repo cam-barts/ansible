@@ -1,0 +1,15 @@
+tunnel: {{ cloudflared_tunnel_id }}
+credentials-file: {{ cloudflared_credentials_file }}
+
+# BunkerWeb has AUTO_REDIRECT_HTTP_TO_HTTPS=yes, so the origin must be reached over
+# HTTPS:8443 -- plain :8080 would 301 to https and loop. noTLSVerify because we connect
+# by container name and BunkerWeb serves per-vhost certs by SNI; this leg is transport
+# only, the client-facing cert is Cloudflare's. Mirrors today's CF->origin:443 behaviour.
+originRequest:
+  connectTimeout: 30s
+  noTLSVerify: true
+
+# One catch-all: BunkerWeb already vhost-routes on the Host header, which cloudflared
+# preserves. CF-Connecting-IP survives too, so real-IP + the auto-ban pipeline are intact.
+ingress:
+  - service: https://bunkerweb-bunkerweb-1:8443

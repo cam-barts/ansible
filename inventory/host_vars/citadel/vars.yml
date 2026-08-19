@@ -1,0 +1,160 @@
+---
+ansible_become: true
+
+# Read off the live host 2026-08-17; verified byte-equivalent to
+# /etc/docker/daemon.json by the adversarial review pass. citadel IS the
+# Loki host, so big batches (5000) and a longer timeout (3s) vs warrig.
+docker_daemon_config:
+  debug: true
+  log-driver: loki
+  log-opts:
+    keep-file: "true"
+    loki-batch-size: "5000"
+    loki-max-backoff: 800ms
+    loki-retries: "2"
+    loki-timeout: 3s
+    loki-url: http://citadel.shadeking.cam.local:3100/loki/api/v1/push
+    mode: non-blocking
+
+# cadvisor fold-in vars: inert until citadel joins [cadvisor:children].
+# Values match the live container (roles/cadvisor/README.md): no published
+# port, scraped by name over monitoring_default, 512m, no --docker_only.
+cadvisor_memory: "512m"
+cadvisor_docker_only: false
+cadvisor_publish_port: false
+cadvisor_networks:
+  - name: monitoring_default
+
+# --- borgmatic --------------------------------------------------------------
+# Per-host values for roles/borgmatic. Everything else (paths, ntfy, retention,
+# dump timeouts, guards) is shared and lives in roles/borgmatic/defaults.
+#
+# Borg repo target on gastown. Naming matches warrig's borg_backup_warrig
+# convention; the suffix differentiates the source.
+borgmatic_repo_url: "ssh://nux@gastown.shadeking.cam.local/volume1/NetBackup/borg_backup_citadel"
+
+# Drives the cron entry name ("borgmatic citadel→gastown daily"), the
+# /root/.ssh/config blockinfile marker suffix, and every ntfy title/tag/body.
+# All three key on existing on-disk state. Changing this orphans them.
+borgmatic_repo_label: citadel
+
+# Names the ansible-vault key holding THIS repo's passphrase. Lives in
+# inventory/group_vars/borgmatic_source/vault.yml. Deliberately not shared with
+# warrig, which has its own repo and its own secret.
+borgmatic_passphrase_var: vault_borgmatic_passphrase
+
+# Daily 03:00, offset from warrig's 04:00 so gastown isn't servicing two
+# concurrent borg pushes.
+borgmatic_cron_hour: 3
+
+# Sources. /etc and the docker_services tree are the load-bearing state.
+# ~/.config selectively included via the excludes filter below.
+borgmatic_source_directories:
+  - /etc
+  - /home/nux/docker
+  - /home/nux/.config
+  - /var/backups/borgmatic-dumps  # populated by before_backup_command
+  - "{{ borgmatic_system_state_dir }}"  # populated by before_backup_command
+
+# Exclude patterns. Mirror warrig's pattern (caches, build artifacts, venvs)
+# plus citadel-specific: skip Garage object data + metadata (S3 has its own
+# replication; config-only is the value), skip windmill worker tmp scratch.
+# warrig's live list was reconciled separately on 2026-08-18; the two hosts
+# deliberately diverge (see inventory/host_vars/warrig.yml).
+borgmatic_excludes:
+  - "*/.cache/*"
+  - "*/node_modules/*"
+  - "*/__pycache__/*"
+  - "*/.venv/*"
+  - "*/venv/*"
+  - "*/.npm/*"
+  - "*/.local/share/Trash/*"
+  - "*/tmp/*"
+  - "*/.tmp/*"
+  # Garage object data + metadata: S3 has internal replication, config is
+  # what's worth backing up. Container compose dir itself stays included.
+  - "/home/nux/docker/garage/data/*"
+  - "/home/nux/docker/garage/meta/*"
+  # Loki / Prometheus / Grafana on-disk TSDB chunks, large, derivable from
+  # configured scrape targets; backing up config dirs is enough.
+  - "/home/nux/docker/monitoring/data/loki/*"
+  - "/home/nux/docker/monitoring/data/prometheus/*"
+  - "/home/nux/docker/monitoring/data/grafana/grafana.db-journal"
+  # changedetection screenshot snapshots: regenerable
+  - "/home/nux/docker/changedetection/datastore/Browserless/*"
+
+# Databases to dump. The before-create hook iterates this list, and its
+# presence is what makes the role install borgmatic-dump-dbs.sh /
+# borgmatic-cleanup-dumps.sh, create /var/backups/borgmatic-dumps, and add the
+# dump/cleanup hooks to the rendered config. Dropping it here would leave the
+# backups reporting success with no database dumps in them.
+#
+# Per entry:
+#   name            : also the DUMP-FAILED-<name>.txt marker suffix, and the
+#                      key borgmatic-cleanup-dumps.sh asserts on (it expects
+#                      "<name>-all.sql", so keep dump_file in that shape).
+#   terminator      : string the tail of a complete dump must contain. This
+#                      is what makes a truncated-but-exit-0 dump fail instead
+#                      of being promoted.
+#   dump_invocation : the full command, rendered verbatim as the argv handed
+#                      to the script's dump() helper. It references the shell
+#                      vars $outer_timeout / $inner_timeout defined in the
+#                      script from borgmatic_dump_timeout_{outer,inner}, so
+#                      the split stays in one place. Outer wraps `docker`,
+#                      inner runs inside the container.
+borgmatic_databases:
+  - name: windmill-postgres
+    dump_file: "windmill-postgres-all.sql"
+    # pg_dumpall's CLUSTER terminator, not the per-database one, see comment.
+    terminator: "PostgreSQL database cluster dump complete"
+    dump_comment: |-
+      # Terminator note: pg_dumpall's CLUSTER terminator is used deliberately, the
+      # per-database "PostgreSQL database dump complete" appears once per DB and
+      # would still match a dump truncated between databases.
+    dump_invocation: |-
+      timeout "$outer_timeout" docker exec windmill-db-1 \
+          timeout "$inner_timeout" pg_dumpall -U postgres
+
+  - name: bunkerweb-mariadb
+    dump_file: "bunkerweb-mariadb-all.sql"
+    terminator: "Dump completed"
+    # MYSQL_PASSWORD is in the container env (compose-injected). The table
+    # list is enumerated live with BunkerWeb's ephemeral test tables (test_ +
+    # exactly 32 hex chars, see bunkerweb db/Database.py uuid4().hex) filtered
+    # out, so a test table created/dropped mid-dump is never referenced. That
+    # closes the Jun 25 / Jul 12 dump race structurally. The pattern is exact
+    # so a future real test_* table would still be dumped. An empty list (SHOW
+    # TABLES failed) falls through as a failure and gets retried.
+    dump_comment: |-
+      # $tables is deliberately unquoted below: mariadb-dump takes the table list
+      # as separate argv entries, so word splitting is required. Safe here: the
+      # schema is a fixed set of bw_* names with no spaces or glob characters.
+    dump_invocation: |-
+      timeout "$outer_timeout" docker exec bunkerweb-bw-db-1 sh -c \
+          'tables=$(mariadb -ubunkerweb -p"$MYSQL_PASSWORD" -NBe "SHOW TABLES FROM db" | grep -Ev "^test_[0-9a-f]{32}$"); [ -n "$tables" ] && exec timeout '"$inner_timeout"' mariadb-dump -ubunkerweb -p"$MYSQL_PASSWORD" --single-transaction --quick db $tables'
+  # No mongodb instance found on citadel as of 2026-05-13 survey. Add a
+  # block here if/when mongo lands.
+
+# --- bunkerweb_stack --------------------------------------------------------
+# Plaintext passthroughs for the secrets in vault.yml next door, same pattern
+# as inventory/group_vars/synology/vars.yml: grep for the name used in the
+# template, land here, see it points at a `vault_*` key, then
+# `ansible-vault view inventory/host_vars/citadel/vault.yml` to read it.
+#
+# bunkerweb_db_password is the MariaDB `bunkerweb` user's password. It appears
+# TWICE in the rendered compose file: once bare as MYSQL_PASSWORD on bw-db, and
+# once embedded in the DATABASE_URI connection string on the x-bw-env anchor.
+bunkerweb_db_password: "{{ vault_bunkerweb_db_password }}"
+# BunkerWeb API password for the `nux` API user (bw-api's API_PASSWORD).
+bunkerweb_api_password: "{{ vault_bunkerweb_api_password }}"
+
+# --- cloudflared -------------------------------------------------------------
+# Plaintext passthroughs for the two cloudflared secrets in vault.yml, same
+# pattern as bunkerweb_stack above.
+#
+# Tunnel credentials JSON (citadel-bunkerweb.json), deployed 0400.
+cloudflared_credentials_json: "{{ vault_cloudflared_credentials_json }}"
+# Origin cert / tunnel login token (cert.pem), deployed 0600. Not needed at
+# runtime (only by `cloudflared tunnel login`), kept alongside the other two
+# files because that's how the live host has it.
+cloudflared_cert_pem: "{{ vault_cloudflared_cert_pem }}"

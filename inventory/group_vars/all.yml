@@ -1,3 +1,14 @@
+# Lab host LAN addresses. Single source of truth: three roles (firewalld, ufw,
+# promtail) each carried their own copy of citadel's IP as a role default, with
+# no link between them, so changing it meant hand-editing three files and
+# nothing would catch a missed one. inventory/hosts reaches these hosts by FQDN,
+# so there is no ansible_host to derive them from.
+#
+# Firewall rules match on the literal source address, which is why these are
+# addresses and not names.
+citadel_lan_ip: 192.168.1.88
+warrig_lan_ip: 192.168.1.168
+
 # software to install everywhere
 package_list:
   # - mask

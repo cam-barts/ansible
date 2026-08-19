@@ -24,4 +24,5 @@ promtail_config_dir: /home/pirate/promtail
 
 # Loki push target. Identical across the fleet today.
 promtail_loki_url: "http://citadel.shadeking.cam.local:3100"
-promtail_citadel_ip: 192.168.1.88
+# Single source of truth: inventory/group_vars/all.yml.
+promtail_citadel_ip: "{{ citadel_lan_ip }}"

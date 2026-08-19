@@ -1,5 +1,5 @@
 # nux is in the DSM `administrators` group, which gives direct write access
-# to every path the rsnapshot_gastown role touches (his home, the
+# to every path the rsnapshot role touches (his home, the
 # pi_rsnapshots tree, and /usr/syno/etc/synoschedule.d/root/*.task).
 # Sudo isn't configured for nux on gastown (`sudo -n whoami` → "a password
 # is required") and intentionally isn't needed here.
@@ -10,3 +10,25 @@ ansible_become: false
 # check after connecting. The `python312` DSM package is installed and gives
 # 3.12.12 here.
 ansible_python_interpreter: /usr/local/bin/python3.12
+
+# Sources. gastown pulls from each over SSH using rsnapshot_ssh_key.
+# Pi user is `pirate` per ~/.ssh/config (no nux user on the Pis).
+# `disabled: true` renders the line commented in rsnapshot.conf.
+rsnapshot_sources:
+  - name: warrig
+    ssh_target: nux@warrig.shadeking.cam.local
+    source_path: /home/nux/
+    note: "primary desktop. Verified gastown→warrig key trust 2026-05-12."
+  - name: citadel
+    ssh_target: nux@citadel.shadeking.cam.local
+    source_path: /home/nux/
+    note: "secondary host (Docker fleet). gastown→citadel key trust established 2026-05-12."
+  - name: wellerman
+    ssh_target: pirate@wellerman.shadeking.cam.local
+    source_path: /home/pirate/
+  - name: black-pearl
+    ssh_target: pirate@black-pearl.shadeking.cam.local
+    source_path: /home/pirate/
+  - name: billy-of-tea
+    ssh_target: pirate@billy-of-tea.shadeking.cam.local
+    source_path: /home/pirate/

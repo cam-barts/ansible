@@ -3,8 +3,8 @@
 # rulesets on 2026-08-17. See README for the comparison and the Docker
 # caveat. Additive only: the role never disables or removes anything.
 
-# Matches roles/ufw/defaults/main.yml's ufw_citadel_ip.
-firewalld_citadel_ip: 192.168.1.88
+# Single source of truth: inventory/group_vars/all.yml.
+firewalld_citadel_ip: "{{ citadel_lan_ip }}"
 
 # Additive rich rules: {port, proto, source[, hosts]}. `hosts` (list of
 # inventory_hostname) restricts a rule to specific play hosts; omit to apply

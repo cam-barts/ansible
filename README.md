@@ -35,8 +35,8 @@ non-builtin collections the roles depend on (Docker container management,
 
 | Playbook | Hosts | Purpose |
 | --- | --- | --- |
-| `configure_borgmatic_citadel.yml` | citadel + gastown | Installs borgmatic on citadel, renders config + dump/cleanup/system-state hook scripts, generates an SSH key, authorizes it on gastown, initialises the repo, and schedules the daily 03:00 push. See `roles/borgmatic_citadel/README.md`. |
-| `configure_rsnapshot.yml` | gastown (Synology) | Manages SynoCommunity rsnapshot on DSM 7.x: renders `rsnapshot.conf` outside `SYNOPKG_PKGDEST` (so package upgrades can't wipe it), installs a wrapper that emits proper start/ok/fail ntfy notifications, and rewrites the synoschedtask cron entries to call it. See `roles/rsnapshot_gastown/README.md`. |
+| `configure_borgmatic_citadel.yml` | citadel + gastown | Installs borgmatic on citadel, renders config + dump/cleanup/system-state hook scripts, generates an SSH key, authorizes it on gastown, initialises the repo, and schedules the daily 03:00 push. See `roles/borgmatic/README.md`. |
+| `configure_rsnapshot.yml` | gastown (Synology) | Manages SynoCommunity rsnapshot on DSM 7.x: renders `rsnapshot.conf` outside `SYNOPKG_PKGDEST` (so package upgrades can't wipe it), installs a wrapper that emits proper start/ok/fail ntfy notifications, and rewrites the synoschedtask cron entries to call it. See `roles/rsnapshot/README.md`. |
 | `configure_backup_targets.yml` | rsnapshot source hosts (Pis + warrig + citadel) | Ensures `rsync` (and anything else every backup source needs) is installed via the right package manager. |
 | `deploy_node_exporter.yml` | Pis + EndeavourOS hosts | Installs and enables `prometheus-node-exporter` from the distro repo. Branches on `ansible_facts.os_family` for apt vs pacman. |
 | `configure_ufw.yml` | Raspberry Pis | Default deny in / allow out, rate-limited SSH, full access from the workstation, node_exporter from citadel. |
@@ -46,7 +46,7 @@ non-builtin collections the roles depend on (Docker container management,
 | `deploy_promtail.yml` | `[promtail]` (Pis) | Deploys Promtail as a Docker container shipping container logs plus host syslog/auth/kernel/dpkg logs to Loki on citadel. See `roles/promtail/README.md`. |
 | `deploy_ntfy_server.yml` | black-pearl | Deploys ntfy as a Docker container. Every alert in the lab (borgmatic, rsnapshot, dsm_config_audit, and the rest) flows through it. See `roles/ntfy_server/README.md`. |
 | `configure_ntfy_client.yml` | all hosts | Renders `/etc/ntfy/client.yml` so every host's `ntfy` CLI points at the self-hosted server instead of silently defaulting to the public `ntfy.sh`. See `roles/ntfy_client/README.md`. |
-| `configure_borgmatic_warrig.yml` | warrig + gastown | warrig's counterpart to `configure_borgmatic_citadel.yml`: installs borgmatic, renders config + hook scripts (adopting a previously hand-managed `/etc/borgmatic/config.yaml`), generates an SSH key, authorizes it on gastown, and schedules the daily 04:00 push. First run must be `--check --diff`. See `roles/borgmatic_warrig/README.md`. |
+| `configure_borgmatic_warrig.yml` | warrig + gastown | warrig's counterpart to `configure_borgmatic_citadel.yml`: installs borgmatic, renders config + hook scripts (adopting a previously hand-managed `/etc/borgmatic/config.yaml`), generates an SSH key, authorizes it on gastown, and schedules the daily 04:00 push. First run must be `--check --diff`. See `roles/borgmatic/README.md`. |
 | `configure_dsm_config_audit.yml` | gastown (Synology) | Drops a read-only DSM config-drift export script in `nux`'s home and pins the Windmill runner's SSH key to it with a forced `command=`, so a nightly Windmill flow can snapshot config-drift surfaces. See `roles/dsm_config_audit/README.md`. |
 | `prune_docker.yml` | Raspberry Pis | One-shot `docker system prune` covering containers, non-dangling images, networks, volumes, and builder cache. |
 | `update_docker_images.yml` | warrig + citadel + the three Pis (any subset via `-e docker_update_target=`) | **DESTRUCTIVE.** One-shot `watchtower --run-once` to pull newer digests for every running container's current tag and recreate what moved, then `docker system prune -af`. Runs unescalated as the `docker`-group user; no become key needed. gastown is excluded and must stay excluded (no `docker` on PATH, no socket). Read the header comment before running it: 71 of the 90 containers in scope are loki-logged, and Semaphore itself is one of them. |
@@ -57,7 +57,7 @@ non-builtin collections the roles depend on (Docker container management,
 ## Roles
 
 One role per playbook, described in the Playbooks table above. The complex
-ones (`borgmatic_*`, `rsnapshot_gastown`, `dsm_config_audit`, `cadvisor`,
+ones (`borgmatic`, `rsnapshot`, `dsm_config_audit`, `cadvisor`,
 `promtail`, `ntfy_server`, `firewalld`, `docker_log_rotation`) carry their own
 README. Every role's tunables live in its commented `defaults/main.yml`. That
 file is the variable reference, deliberately not duplicated here.
@@ -240,19 +240,19 @@ role README credits its own upstream; collected here:
 
 | Software | Licence | Used by |
 |---|---|---|
-| [borgmatic](https://torsion.org/borgmatic/) | GPL-3.0-or-later | `borgmatic_citadel`, `borgmatic_warrig` |
-| [BorgBackup](https://www.borgbackup.org/) | BSD-3-Clause | `borgmatic_citadel`, `borgmatic_warrig` |
+| [borgmatic](https://torsion.org/borgmatic/) | GPL-3.0-or-later | `borgmatic` |
+| [BorgBackup](https://www.borgbackup.org/) | BSD-3-Clause | `borgmatic` |
 | [cAdvisor](https://github.com/google/cadvisor) | Apache-2.0 | `cadvisor` |
 | [Docker Engine](https://github.com/moby/moby) | Apache-2.0 | `docker_log_rotation` |
 | [firewalld](https://firewalld.org/) | GPL-2.0-or-later | `firewalld` |
 | [ntfy](https://github.com/binwiederhier/ntfy) | Apache-2.0 or GPL-2.0 | `ntfy_server`, `ntfy_client` |
 | [Prometheus node_exporter](https://github.com/prometheus/node_exporter) | Apache-2.0 | `node_exporter` |
 | [Promtail, part of Grafana Loki](https://github.com/grafana/loki) | AGPL-3.0 | `promtail` |
-| [rsnapshot](https://rsnapshot.org/) | GPL-2.0 | `rsnapshot_gastown` |
+| [rsnapshot](https://rsnapshot.org/) | GPL-2.0 | `rsnapshot` |
 | [ufw](https://launchpad.net/ufw) | GPL-3.0 | `ufw` |
 
 Licences were read from the upstream repositories and distro package metadata
 on 2026-08-17. Synology DSM's own utilities (`synoschedtask`, `synopkg`,
 `synofirewall`, `synoschedule`) are proprietary and vendor-supplied; the
-`rsnapshot_gastown` and `dsm_config_audit` roles call them but ship none of
+`rsnapshot` and `dsm_config_audit` roles call them but ship none of
 their code.

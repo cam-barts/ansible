@@ -1,0 +1,40 @@
+---
+# `cloudflared` is a service of the bunkerweb compose project (see
+# roles/bunkerweb_stack) and is the sole inbound path for ~48 lab hostnames.
+# This role writes config + secret files ONLY. There are no handlers, and
+# nothing here restarts, reloads or recreates the container: that stack lives
+# under citadel's `loki` log driver, where tearing a container down deadlocks
+# the daemon (see roles/bunkerweb_stack/README.md, "the guard"). A config
+# change here requires a deliberate, human-triggered `cloudflared` reload,
+# done by hand, ready to unwedge dockerd if needed.
+
+- name: Template cloudflared config.yml
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ cloudflared_config_dir }}/config.yml"
+    owner: "{{ cloudflared_file_owner }}"
+    group: "{{ cloudflared_file_group }}"
+    mode: "0644"
+    backup: true
+
+# no_log on both: the module args contain the secret in `content`, and
+# without no_log a failed/verbose run would echo it to the console and logs.
+- name: Deploy tunnel credentials file
+  ansible.builtin.copy:
+    content: "{{ cloudflared_credentials_json }}"
+    dest: "{{ cloudflared_config_dir }}/{{ cloudflared_credentials_filename }}"
+    owner: "{{ cloudflared_file_owner }}"
+    group: "{{ cloudflared_file_group }}"
+    mode: "0400"
+    backup: true
+  no_log: true
+
+- name: Deploy origin cert
+  ansible.builtin.copy:
+    content: "{{ cloudflared_cert_pem }}"
+    dest: "{{ cloudflared_config_dir }}/{{ cloudflared_cert_filename }}"
+    owner: "{{ cloudflared_file_owner }}"
+    group: "{{ cloudflared_file_group }}"
+    mode: "0600"
+    backup: true
+  no_log: true

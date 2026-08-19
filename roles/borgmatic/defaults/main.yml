@@ -1,0 +1,188 @@
+---
+# borgmatic: shared defaults for every host that pushes a nightly borg archive
+# to gastown.
+#
+# What is NOT here, on purpose: everything that differs between hosts. Those
+# live in inventory/host_vars/<host>.yml, because no single default can serve
+# both citadel and warrig:
+#
+#   borgmatic_repo_url            different repo per host
+#   borgmatic_repo_label          citadel / warrig
+#   borgmatic_passphrase_var      different vault key per repo (see below)
+#   borgmatic_cron_hour           3 / 4, offset so gastown serves one at a time
+#   borgmatic_source_directories  5 / 3 entries
+#   borgmatic_excludes            15 / 26 entries
+#
+# The defaults below are chosen to reproduce citadel's current rendered output
+# with no host_vars at all; warrig overrides the four it needs
+# (borgmatic_ssh_command, borgmatic_checkpoint_interval, borgmatic_run_flags,
+# and its cron hour). The one exception is borgmatic_databases, which defaults
+# to warrig's `[]`: that is the inert option, so a new borgmatic host never
+# grows DB dump hooks by accident.
+
+# --- config paths -----------------------------------------------------------
+# Root-owned 0600 because encryption_passcommand and DB connection details
+# should not be world-readable.
+borgmatic_config_dir: /etc/borgmatic
+borgmatic_config_path: "{{ borgmatic_config_dir }}/config.yaml"
+
+# --- passphrase -------------------------------------------------------------
+# NO real default, deliberately. Each host names its own ansible-vault key in
+# host_vars (citadel: vault_borgmatic_passphrase, warrig:
+# vault_borgmatic_warrig_passphrase), and the role resolves it with
+# lookup('vars', borgmatic_passphrase_var). A wrong-but-defined default here
+# would silently write one host's passphrase into another host's passphrase
+# file. warrig's repo is keyfile mode, so that is not recoverable by later
+# supplying the correct value. Empty string + the role's assert fails loudly
+# instead. Keys live in inventory/group_vars/borgmatic_source/vault.yml.
+borgmatic_passphrase_var: ""
+borgmatic_passphrase_file: "{{ borgmatic_config_dir }}/passphrase"
+borgmatic_encryption_passcommand: "cat {{ borgmatic_passphrase_file }}"
+
+# Set false to leave the live passphrase file untouched (useful for a first
+# reconcile run, before the vault var exists). The assert is skipped too.
+borgmatic_manage_passphrase: true
+
+# --- SSH trust <host>→gastown -----------------------------------------------
+# Per-cron-job key so an interactive nux@gastown key never doubles as the borg
+# push identity. The role creates it, authorizes it on gastown from inside the
+# role (delegate_to, before anything dials across), and pins root's ssh at it
+# with IdentitiesOnly.
+borgmatic_ssh_key_path: /root/.ssh/borg_gastown
+borgmatic_ssh_remote_user: nux
+borgmatic_ssh_remote_host: gastown.shadeking.cam.local
+borgmatic_manage_ssh_config: true
+
+# Inventory name for the same host, used as the delegate_to target when the
+# role installs its pubkey there. Separate from borgmatic_ssh_remote_host
+# because that one is the FQDN borg dials, while delegation needs the name
+# ansible knows (and its host_vars, including gastown's python 3.12 pin).
+borgmatic_ssh_remote_host_inventory_name: gastown
+
+# What borg uses instead of a bare `ssh` (borg's BORG_RSH). Empty by default,
+# which is citadel's current rendered config: the key is omitted entirely.
+# warrig sets "ssh -o BatchMode=yes" in host_vars, deliberately with no -i:
+# identity selection stays in /root/.ssh/config where the IdentitiesOnly pin
+# lives, and BatchMode turns a rejected key into an immediate error instead of
+# a password prompt that hangs the run (warrig, 2026-08-18, 29 minutes).
+borgmatic_ssh_command: ""
+
+# gastown's nux shell has no /usr/local/bin on its non-interactive PATH, so
+# borg needs an absolute path. SynoCommunity's borgbackup package symlinks it
+# here.
+borgmatic_remote_path: /usr/local/bin/borg
+
+# Seconds the repo-existence probe may take before it is killed. Generous
+# enough for a NAS answering a cold repo-info, short enough that a stuck ssh
+# fails the task instead of stalling the play. rc 124 is treated as "could not
+# tell", never as "no repo".
+borgmatic_probe_timeout: 120
+
+# --- state ------------------------------------------------------------------
+# Init marker, touched after `borgmatic init` (or after the probe confirms the
+# repo already exists). Guards re-init on subsequent runs.
+borgmatic_state_dir: /var/lib/borgmatic
+borgmatic_init_marker: "{{ borgmatic_state_dir }}/.initialized"
+
+# System state capture directory. nux:nux 0750 under $HOME so it rides in the
+# home-dir backup source. Populated by the before-create hook.
+borgmatic_system_state_dir: /home/nux/.system-state
+borgmatic_state_owner: nux
+borgmatic_state_group: nux
+borgmatic_export_script_path: /usr/local/bin/borgmatic-export-system-state.sh
+borgmatic_run_script_path: /usr/local/bin/borgmatic-run.sh
+
+# --- schedule ---------------------------------------------------------------
+# borgmatic_cron_hour is per-host (citadel 3, warrig 4, offset so gastown is
+# never servicing two concurrent receivers).
+#
+# borgmatic_cron_name is DERIVED and must stay derived: it renders the two
+# literals already in the live crontabs byte-for-byte ("borgmatic citadel→
+# gastown daily" / "borgmatic warrig→gastown daily"). The `cron:` module keys
+# on this string, so any change orphans the existing line AND adds a second
+# nightly run against the same repo.
+borgmatic_cron_minute: 0
+borgmatic_cron_user: root
+borgmatic_cron_name: "borgmatic {{ borgmatic_repo_label }}→gastown daily"
+borgmatic_log_path: /var/log/borgmatic.log
+
+# Flags appended to the borgmatic invocation inside borgmatic-run.sh. Empty by
+# default (citadel's current wrapper passes none); warrig sets
+# "--verbosity 1 --stats" in host_vars. The wrapper puts the separating space
+# inside the conditional, so an empty value renders no trailing space.
+borgmatic_run_flags: ""
+
+# --- borg knobs -------------------------------------------------------------
+borgmatic_compression: "zstd,10"
+
+# Empty by default: citadel's config omits the key entirely. warrig sets 600
+# in host_vars, carried forward from its pre-Ansible config (stock is 1800).
+borgmatic_checkpoint_interval: ""
+
+borgmatic_keep_daily: 7
+borgmatic_keep_weekly: 4
+borgmatic_keep_monthly: 6
+borgmatic_keep_yearly: 1
+
+# data = block-level integrity, extract = full-restore rehearsal.
+borgmatic_consistency_checks:
+  - {name: data, frequency: "2 weeks"}
+  - {name: extract, frequency: "1 month"}
+
+# --- ntfy -------------------------------------------------------------------
+# Single topic [redacted-vaulted-topic] for both hosts: warrig publishes there too
+# (confirmed against its live config 2026-08-18), with the message body
+# carrying the per-host distinction. Named priorities, no numeric -p N.
+borgmatic_ntfy_bin: /usr/bin/ntfy
+borgmatic_ntfy_topic: [redacted-vaulted-topic]
+borgmatic_ntfy_priority_start: min
+borgmatic_ntfy_priority_ok: default
+borgmatic_ntfy_priority_fail: urgent
+# Degraded = a DB dump failed but the filesystem backup still ran. urgent, not
+# high: a missing DB dump used to surface as a whole-backup failure (urgent,
+# bypasses DND) and must not get quieter now that it degrades gracefully.
+# Referenced only by borgmatic-dump-dbs.sh, so it is inert on a host with no
+# borgmatic_databases.
+borgmatic_ntfy_priority_degraded: urgent
+
+# --- databases --------------------------------------------------------------
+# Empty is the inert, safe default: with no entries the role installs neither
+# dump script, creates no staging dir, and the config grows no dump/cleanup
+# hooks. Hosts that need dumps declare borgmatic_databases in host_vars.
+#
+# Per entry:
+#   name            : also the DUMP-FAILED-<name>.txt marker suffix, and the
+#                      key borgmatic-cleanup-dumps.sh asserts on (it expects
+#                      "<name>-all.sql", so keep dump_file in that shape).
+#   terminator      : string the tail of a complete dump must contain. This
+#                      is what makes a truncated-but-exit-0 dump fail instead
+#                      of being promoted.
+#   dump_invocation : the full command, rendered verbatim as the argv handed
+#                      to the script's dump() helper. It references the shell
+#                      vars $outer_timeout / $inner_timeout defined in the
+#                      script from borgmatic_dump_timeout_{outer,inner}, so
+#                      the split stays in one place. Outer wraps `docker`,
+#                      inner runs inside the container.
+borgmatic_databases: []
+
+# DB dump staging dir. The before-create hook writes here; the after-create
+# hook wipes it. 0700 root so dumps aren't world-readable while staged. The
+# dir is also captured as a regular source directory.
+borgmatic_dump_dir: /var/backups/borgmatic-dumps
+
+# Dump resilience: attempts per DB and seconds between attempts. A dump that
+# fails all attempts alerts via ntfy but never aborts the filesystem backup.
+# The test_<uuid> race is closed structurally by the table filter in citadel's
+# bunkerweb entry, so the retry only covers brief container blips, hence few
+# attempts, far apart.
+borgmatic_dump_attempts: 2
+borgmatic_dump_retry_delay: 30
+# Split timeout. The INNER timeout(1) runs inside the container and is what
+# actually bounds the dump; the OUTER one only kills the docker CLI and is a
+# backstop against a wedged docker client. Outer MUST stay > inner, else the
+# CLI is killed while the dump keeps running server-side and a retry stacks a
+# second dump on the first. Worst-case before-hook stall is
+# attempts x inner + retry_delay, per DB. Keep the total clear of the other
+# host's push to the same gastown target.
+borgmatic_dump_timeout_inner: 570
+borgmatic_dump_timeout_outer: 600

@@ -1,0 +1,34 @@
+---
+# citadel's Cloudflare tunnel config. `cloudflared` is a service of the
+# bunkerweb compose project (see roles/bunkerweb_stack) -- it is the sole
+# inbound path for ~48 lab hostnames. This role manages the config file and
+# the two secret files it depends on; it never touches the container. See
+# README.
+
+# Host path, bind-mounted read-only into the container at /etc/cloudflared.
+# No root needed anywhere in this role: the whole tree is nux:nux.
+cloudflared_config_dir: /home/nux/docker/cloudflared
+
+# Not secret: the tunnel ID is a public identifier (it's also the left half
+# of the *.cfargotunnel.com CNAME target documented in README.md).
+cloudflared_tunnel_id: 83250c65-5a20-4a10-9764-b6f9df8fafd1
+
+# In-container path, referenced inside config.yml's `credentials-file:` key.
+# Deliberately not host-path-derived: {{ cloudflared_config_dir }} is the
+# host side of the bind mount, /etc/cloudflared is the container side, and
+# config.yml is read inside the container.
+cloudflared_credentials_file: /etc/cloudflared/{{ cloudflared_credentials_filename }}
+
+# Host-side filenames for the two secret files.
+cloudflared_credentials_filename: citadel-bunkerweb.json
+cloudflared_cert_filename: cert.pem
+
+cloudflared_file_owner: nux
+cloudflared_file_group: nux
+
+# Secrets have no defaults on purpose: an undefined-variable failure is the
+# correct outcome if this role is ever applied to a host without them.
+# Defined in inventory/host_vars/citadel/vars.yml as passthroughs to
+# vault.yml:
+#   cloudflared_credentials_json -> vault_cloudflared_credentials_json
+#   cloudflared_cert_pem         -> vault_cloudflared_cert_pem

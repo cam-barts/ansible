@@ -1,26 +1,40 @@
 ---
-# Two-play sequence:
-#   1. citadel: install borgmatic, render config + scripts, generate
-#      citadel→gastown SSH key, write vault passphrase, init the borg repo.
-#   2. gastown: install the citadel pubkey into nux's authorized_keys so
-#      the daily cron push from citadel can land.
+# Single play. Installs borgmatic on citadel, renders the config and scripts,
+# generates the citadel→gastown SSH key AND authorizes it on gastown, writes
+# the vault passphrase, stages the DB dumps, and installs the 03:00 cron entry.
 #
-# The pubkey is registered as a fact on citadel (set_fact at end of role
-# tasks), then read via hostvars in the gastown play.
+# This was two plays until the roles/borgmatic merge: citadel first, then a
+# gastown play at the end to install the pubkey. That ordering carries the same
+# latent hang warrig actually hit on 2026-08-18. The role pins root's ssh to
+# the new key with IdentitiesOnly partway through play 1, then probes the repo,
+# dialling gastown with a key gastown would not accept until play 2. Ansible
+# runs with `-tt`, so a rejected pubkey does not fail; sshd falls back to a
+# password prompt and the play hangs on it. It only ever worked here because
+# citadel's key was already trusted. The authorized_key task now lives inside
+# the role, delegated to gastown, and runs before anything reaches across.
+#
+#   ANSIBLE_ROLES_PATH=./roles ansible-playbook \
+#       --check --diff --ask-become-pass \
+#       playbooks/configure_borgmatic_citadel.yml
+#
+#   ANSIBLE_ROLES_PATH=./roles ansible-playbook \
+#       --ask-become-pass \
+#       playbooks/configure_borgmatic_citadel.yml
+#
+# Note the SSH keygen task carries check_mode: false, so even a check run
+# writes the keypair (inert until authorized).
+#
+# inventory/hosts (the ansible.cfg default) has citadel in [borgmatic_source],
+# so the vault group_vars bind without any -i or -e stacking. gastown must be
+# reachable in the same inventory: the role delegates to it by the name
+# borgmatic_ssh_remote_host_inventory_name (default "gastown"), which is also
+# where its python 3.12 interpreter pin lives.
+#
+# Per-host values (repo URL, label, excludes, databases, cron hour) live in
+# inventory/host_vars/citadel.yml. See roles/borgmatic/README.md.
 
 - name: Configure borgmatic on citadel for daily push to gastown
   hosts: citadel
   gather_facts: true
   roles:
-    - borgmatic_citadel
-
-- name: Authorize citadel's borgmatic key on gastown
-  hosts: gastown
-  gather_facts: false
-  tasks:
-    - name: Install citadel→gastown pubkey for nux on gastown
-      ansible.posix.authorized_key:
-        user: "{{ hostvars['citadel'].borgmatic_ssh_remote_user | default('nux') }}"
-        key: "{{ hostvars['citadel'].borgmatic_ssh_public_key }}"
-        state: present
-        comment: "borgmatic citadel→gastown"
+    - borgmatic

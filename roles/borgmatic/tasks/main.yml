@@ -1,0 +1,316 @@
+---
+# borgmatic: nightly push to a borg repo on gastown, one host per repo.
+#
+# Merged 2026-08-19 from borgmatic_citadel + borgmatic_warrig. Per-host values
+# (repo url, label, cron hour, sources, excludes, passphrase var, databases)
+# live in inventory/host_vars/<host>.yml; everything below is shared logic.
+#
+# Task order is warrig's: the config is rendered LAST, after every script it
+# references, so `validate: borgmatic config validate -c %s` runs against a
+# config whose hook targets already exist on disk.
+#
+# Idempotency notes:
+#   * Package install is `state: present`, won't churn on existing 2.x.
+#   * SSH key generation guarded by `creates:` so re-runs no-op once the key
+#     file is on disk.
+#   * SSH config is rendered via blockinfile with a per-repo marker suffix so
+#     re-runs converge rather than appending duplicates. The suffix is NOT
+#     cosmetic: a bare `borgmatic` marker would orphan the live block that
+#     already carries `borgmatic_citadel` / `borgmatic_warrig` and append a
+#     second one.
+#   * Config render uses `validate: borgmatic config validate -c %s` so a
+#     malformed template never reaches disk.
+#   * `borgmatic init` is gated by a marker file AND a `repo-info` pre-check,
+#     with rc 124 (probe timed out) treated as "assume the repo exists".
+#   * Cron entry is `cron:` with a name derived from borgmatic_repo_label, so
+#     re-runs converge on the existing line rather than adding a second one.
+
+- name: Install borgmatic
+  ansible.builtin.package:
+    name: borgmatic
+    state: present
+
+- name: Ensure borg is present (borgmatic depends on it, but be explicit)
+  ansible.builtin.package:
+    name: borg
+    state: present
+
+- name: Ensure borgmatic config directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure borgmatic state directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure DB dump staging directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_dump_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: borgmatic_databases | length > 0
+
+# --- passphrase from ansible-vault -------------------------------------------
+# Each host names its OWN vault key via borgmatic_passphrase_var, and the role
+# resolves it with lookup('vars', ...). There is deliberately no real default:
+# a wrong-but-defined value would silently write one host's passphrase into
+# another host's passphrase file, and warrig's repo is keyfile mode, so that is
+# not recoverable by later supplying the right one.
+- name: Assert the borgmatic passphrase variable is defined
+  ansible.builtin.assert:
+    that:
+      - borgmatic_passphrase_var | length > 0
+      - lookup('vars', borgmatic_passphrase_var, default='') | length > 0
+    fail_msg: >-
+      {{ borgmatic_passphrase_var | default('borgmatic_passphrase_var') }} is
+      not set. Name this host's vault key in
+      inventory/host_vars/{{ inventory_hostname }}.yml as
+      `borgmatic_passphrase_var`, and populate that key with
+      `ansible-vault edit inventory/group_vars/borgmatic_source/vault.yml`.
+      Each host has its OWN repo passphrase: do not reuse another host's, it
+      would make that host's existing archives unopenable. citadel uses
+      vault_borgmatic_passphrase, warrig vault_borgmatic_warrig_passphrase.
+      The passphrase protects the borg repo on gastown, losing it makes
+      archives unrecoverable, so stash a copy in KeePassXC at the same time.
+      To run a pass without touching the passphrase file at all, set
+      borgmatic_manage_passphrase=false.
+  when: borgmatic_manage_passphrase | bool
+
+- name: Write passphrase file from ansible-vault
+  ansible.builtin.copy:
+    content: "{{ lookup('vars', borgmatic_passphrase_var) }}\n"
+    dest: "{{ borgmatic_passphrase_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: borgmatic_manage_passphrase | bool
+
+# --- SSH key trust <host>→gastown -------------------------------------------
+- name: Ensure /root/.ssh exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate the borgmatic SSH keypair (ed25519)
+  ansible.builtin.command:
+    cmd: "ssh-keygen -t ed25519 -f {{ borgmatic_ssh_key_path }} -N '' -C 'borgmatic {{ borgmatic_repo_label }}→gastown'"
+    creates: "{{ borgmatic_ssh_key_path }}"
+  # Run in check mode too so subsequent file/slurp tasks have a real file to
+  # reference; the `creates:` guard keeps it idempotent.
+  check_mode: false
+
+- name: Ensure private key is root-only
+  ansible.builtin.file:
+    path: "{{ borgmatic_ssh_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Slurp the borgmatic SSH public key
+  ansible.builtin.slurp:
+    src: "{{ borgmatic_ssh_key_path }}.pub"
+  register: borgmatic_ssh_pub_slurp
+
+- name: Stash pubkey as a fact
+  ansible.builtin.set_fact:
+    borgmatic_ssh_public_key: "{{ borgmatic_ssh_pub_slurp.content | b64decode | trim }}"
+
+# MUST happen before anything below talks to gastown. This used to be a second
+# play at the end of the playbook, which made a first run impossible: the next
+# task pins root's ssh to borg_gastown with IdentitiesOnly, and the repo probe
+# further down then tries to reach gastown with a key gastown has never seen.
+# Ansible runs with `-tt`, so the whole chain has a TTY, and a rejected pubkey
+# does not fail. sshd falls back to a password prompt and the play hangs on it
+# indefinitely. Observed on warrig 2026-08-18, 29 minutes before it was killed,
+# with no `borg serve` ever starting on the gastown side.
+#
+# become: false because this writes nux's own authorized_keys on gastown, and
+# the play-level `become: true` would otherwise try to sudo there.
+- name: Authorize the borgmatic pubkey on gastown
+  ansible.posix.authorized_key:
+    user: "{{ borgmatic_ssh_remote_user }}"
+    key: "{{ borgmatic_ssh_public_key }}"
+    state: present
+    comment: "borgmatic {{ borgmatic_repo_label }}→gastown"
+  delegate_to: "{{ borgmatic_ssh_remote_host_inventory_name }}"
+  become: false
+
+# IdentitiesOnly pins root's gastown ssh to the per-job key. Set
+# borgmatic_manage_ssh_config to false to leave the live ssh config alone.
+#
+# The `borgmatic_{{ borgmatic_repo_label }}` marker suffix reproduces the
+# markers already on disk from the pre-merge roles. Do not simplify it.
+- name: Render /root/.ssh/config entry for gastown
+  ansible.builtin.blockinfile:
+    path: /root/.ssh/config
+    create: true
+    owner: root
+    group: root
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED: borgmatic_{{ borgmatic_repo_label }}"
+    block: |
+      Host {{ borgmatic_ssh_remote_host }}
+          User {{ borgmatic_ssh_remote_user }}
+          IdentityFile {{ borgmatic_ssh_key_path }}
+          IdentitiesOnly yes
+  when: borgmatic_manage_ssh_config | bool
+
+- name: Seed known_hosts for gastown (accept-new on first contact)
+  ansible.builtin.command:
+    cmd: >-
+      ssh -o BatchMode=yes
+          -o StrictHostKeyChecking=accept-new
+          -i {{ borgmatic_ssh_key_path }}
+          {{ borgmatic_ssh_remote_user }}@{{ borgmatic_ssh_remote_host }}
+          true
+  register: borgmatic_ssh_seed
+  failed_when: false
+  changed_when: false
+
+# --- config + scripts -------------------------------------------------------
+# Safety net for the adoption case: any hand-managed config is copied aside
+# once (force: false → never overwritten on later runs) before the template
+# lands on top of it.
+- name: Back up the previous borgmatic config once
+  ansible.builtin.copy:
+    src: "{{ borgmatic_config_path }}"
+    dest: "{{ borgmatic_config_path }}.pre-ansible.bak"
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+  failed_when: false
+
+- name: Ensure system-state capture directory exists
+  ansible.builtin.file:
+    path: "{{ borgmatic_system_state_dir }}"
+    state: directory
+    owner: "{{ borgmatic_state_owner }}"
+    group: "{{ borgmatic_state_group }}"
+    mode: "0750"
+
+- name: Install borgmatic-dump-dbs.sh
+  ansible.builtin.template:
+    src: borgmatic-dump-dbs.sh.j2
+    dest: /usr/local/bin/borgmatic-dump-dbs.sh
+    owner: root
+    group: root
+    mode: "0750"
+  when: borgmatic_databases | length > 0
+
+- name: Install borgmatic-cleanup-dumps.sh
+  ansible.builtin.template:
+    src: borgmatic-cleanup-dumps.sh.j2
+    dest: /usr/local/bin/borgmatic-cleanup-dumps.sh
+    owner: root
+    group: root
+    mode: "0750"
+  when: borgmatic_databases | length > 0
+
+- name: Install borgmatic-export-system-state.sh
+  ansible.builtin.template:
+    src: borgmatic-export-system-state.sh.j2
+    dest: "{{ borgmatic_export_script_path }}"
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Remove legacy borgmatic-export-pkglists.sh (superseded)
+  ansible.builtin.file:
+    path: /usr/local/bin/borgmatic-export-pkglists.sh
+    state: absent
+
+- name: Install borgmatic-run.sh wrapper
+  ansible.builtin.template:
+    src: borgmatic-run.sh.j2
+    dest: "{{ borgmatic_run_script_path }}"
+    owner: root
+    group: root
+    mode: "0750"
+
+# Rendered after the scripts so `borgmatic config validate` runs against a
+# config whose hook targets already exist on disk.
+- name: Render borgmatic config
+  ansible.builtin.template:
+    src: borgmatic_config.yaml.j2
+    dest: "{{ borgmatic_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "/usr/bin/borgmatic config validate -c %s"
+
+# --- repo init / adoption ---------------------------------------------------
+# Belt-and-suspenders: probe first, marker second.
+#
+# `borgmatic info` was the wrong probe twice over. It resolves to
+# `borg info --glob-archives '{hostname}-*'`, which computes original,
+# compressed and deduplicated sizes for EVERY archive: on a 110G source with
+# ~18 archives over SSH to a NAS that is many minutes of work to answer a
+# yes/no question. `repo-info` reads repository metadata only.
+#
+# The timeout is the backstop for the failure mode that actually bit: anything
+# that leaves ssh waiting on a prompt should fail the probe, not stall the run.
+# `failed_when: false` means a timeout just falls through to the init guard
+# below, which has its own marker check.
+- name: Check whether the borg repo already exists on gastown
+  ansible.builtin.command:
+    cmd: >-
+      timeout {{ borgmatic_probe_timeout }}
+      /usr/bin/borgmatic --config {{ borgmatic_config_path }} repo-info
+  register: borgmatic_repo_probe
+  failed_when: false
+  changed_when: false
+  when: not (ansible_check_mode | default(false))
+
+# rc 124 is `timeout` killing the probe, which means "could not tell", not
+# "no repo". Without this the first stuck probe would send the role off to
+# init a repository that already holds every backup the host has. borg would
+# refuse ("repository already exists") rather than clobber it, but a role that
+# tries at all is a role nobody can trust with an adoption.
+- name: Initialize the borg repo on gastown (first run only)
+  ansible.builtin.command:
+    cmd: "/usr/bin/borgmatic --config {{ borgmatic_config_path }} init --encryption repokey-blake2"
+  args:
+    creates: "{{ borgmatic_init_marker }}"
+  when:
+    - not (ansible_check_mode | default(false))
+    - borgmatic_repo_probe.rc | default(1) not in [0, 124]
+
+- name: Touch borgmatic init marker
+  ansible.builtin.file:
+    path: "{{ borgmatic_init_marker }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+  when: not (ansible_check_mode | default(false))
+
+# --- cron -------------------------------------------------------------------
+# borgmatic_cron_name is DERIVED from borgmatic_repo_label and renders the two
+# literals already in the live crontabs byte-for-byte. The `cron:` module keys
+# on this string: change it and the existing line is orphaned while a SECOND
+# nightly run is added against the same repo.
+- name: Schedule daily borgmatic run via cron
+  ansible.builtin.cron:
+    name: "{{ borgmatic_cron_name }}"
+    user: "{{ borgmatic_cron_user }}"
+    hour: "{{ borgmatic_cron_hour }}"
+    minute: "{{ borgmatic_cron_minute }}"
+    job: "{{ borgmatic_run_script_path }} >> {{ borgmatic_log_path }} 2>&1"

@@ -1,6 +1,10 @@
 ---
 skip_list:
-  # Vars are prefixed by domain, not by role name (e.g. borgmatic_* is
-  # shared across borgmatic_citadel/borgmatic_warrig by design), waived
-  # deliberately, not an oversight.
+  # Vars are prefixed by domain, not by role name: rsnapshot uses
+  # rsnapshot_*, dsm_config_audit uses dsm_audit_*, docker_log_rotation uses
+  # docker_daemon_*. Waived deliberately, not an oversight.
+  #
+  # borgmatic_citadel/borgmatic_warrig were the original reason for this
+  # waiver; they merged into roles/borgmatic and are now compliant. The
+  # waiver still has to stay for the three roles above.
   - var-naming[no-role-prefix]

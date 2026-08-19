@@ -47,3 +47,139 @@ cadvisor_docker_only: false
 cadvisor_network_mode: host
 cadvisor_publish_port: false
 cadvisor_boot_fix: true
+
+# --- borgmatic --------------------------------------------------------------
+# Per-host values for roles/borgmatic. Everything else (paths, ntfy, retention,
+# guards) is shared and lives in roles/borgmatic/defaults.
+#
+# RECONCILED against the live root-only /etc/borgmatic/config.yaml on
+# 2026-08-18. Everything below is read off the real file rather than guessed
+# from citadel, except where a comment says otherwise. The live file was
+# borgmatic 1.x sectioned schema (location:/storage:/retention:/consistency:/
+# hooks:), dated 2025-05-13, so the first apply is also a schema migration.
+#
+# Existing repo on gastown. The role does NOT re-init it (repo-info probes
+# first, and the init marker guards); it only ever adopts it.
+borgmatic_repo_url: "ssh://nux@gastown.shadeking.cam.local/volume1/NetBackup/borg_backup_warrig"
+
+# Drives the cron entry name ("borgmatic warrig→gastown daily"), the
+# /root/.ssh/config blockinfile marker suffix, and every ntfy title/tag/body.
+# All three key on existing on-disk state. Changing this orphans them.
+borgmatic_repo_label: warrig
+
+# Names the ansible-vault key holding THIS repo's passphrase, added to
+# inventory/group_vars/borgmatic_source/vault.yml on 2026-08-18. Deliberately
+# separate from citadel's `vault_borgmatic_passphrase`: warrig has its own
+# pre-existing repo, and writing citadel's passphrase here would break every
+# warrig backup. This is an adoption, not a rotation, and the pre-Ansible
+# config stored the value as a LITERAL `encryption_passphrase:` under
+# `storage:`, so /etc/borgmatic/config.yaml.pre-ansible.bak on warrig is still
+# the authoritative rollback copy.
+#
+# !! The passphrase alone does NOT restore this repo. warrig's repo is keyfile
+# mode, so it also needs /root/.config/borg/keys/..., which lives nowhere else.
+# See "warrig's repo is keyfile mode" in roles/borgmatic/README.md.
+borgmatic_passphrase_var: vault_borgmatic_warrig_passphrase
+
+# What borg uses instead of a bare `ssh` (borg's BORG_RSH). Deliberately does
+# NOT carry an -i: identity selection stays in /root/.ssh/config, which is
+# where the IdentitiesOnly pin lives. The only thing set here is BatchMode,
+# and it is set because of what happened on 2026-08-18: an unauthorized key
+# made sshd fall back to a password prompt, and since ansible runs with `-tt`
+# there was a TTY to prompt on, so the run hung for 29 minutes instead of
+# failing. BatchMode turns every future auth failure into an immediate error.
+#
+# The live config used `ssh_command: ssh -i /home/nux/.ssh/rsnapshot_key`, so
+# warrig's nightly push rode on the RSNAPSHOT key, read by root out of nux's
+# homedir. rsnapshot is being retired, so that hidden coupling was cut over to
+# a dedicated per-job key on 2026-08-18 and verified with `borgmatic repo-info`.
+borgmatic_ssh_command: "ssh -o BatchMode=yes"
+
+# 04:00, CONFIRMED 2026-08-18 from two sides: root's live crontab, and the
+# mtime on gastown's repo index (Aug 17 04:08, so the run starts at 04:00 and
+# takes about eight minutes). Offset from citadel's 03:00 so gastown is not
+# servicing two receivers at once.
+#
+# The hand-made `00 04 * * * /usr/bin/borgmatic --verbosity 1 --list --stats`
+# line was deleted from root's crontab before the cutover; the `cron:` module
+# cannot adopt an unmarked line and would otherwise have added a second entry
+# at the same minute. The other line, `00 */6 * * * updatedb`, is unrelated.
+borgmatic_cron_hour: 4
+
+# Flags for the borgmatic invocation inside borgmatic-run.sh. The live crontab
+# used `--verbosity 1 --list --stats`, but sent it to cron mail, which is why
+# /var/log/borgmatic.log did not exist. Now that the output lands in a file,
+# `--stats` is worth keeping: per-run size and dedup numbers are the only
+# observability this backup has. `--list` is dropped, it prints every file in a
+# 110G tree nightly into a log with no rotation configured.
+borgmatic_run_flags: "--verbosity 1 --stats"
+
+# Live config sets 600 (stock default is 1800). Carried forward rather than
+# silently reverted: a 110G push over the LAN benefits from tighter
+# checkpoints if it gets interrupted.
+borgmatic_checkpoint_interval: 600
+
+# Sources. Read off the live config 2026-08-18, verbatim including trailing
+# slashes. The reconstruction had missed /usr/local/ entirely, which is where
+# Cam's own scripts live (and where this role installs borgmatic-run.sh and the
+# system-state exporter, so it is self-consistent).
+#
+# /home/nux is the load-bearing one: warrig is Cam's workstation, the compose
+# tree lives at /home/nux/docker_services. The /home/docker path in
+# daemon.json is the docker data-root and is deliberately NOT a source.
+# ~/.system-state is already inside /home/nux; borgmatic dedupes overlaps.
+borgmatic_source_directories:
+  - /home/nux/
+  - /etc/
+  - /usr/local/
+
+# Exclude patterns. The first block is warrig's live list, adopted verbatim
+# from /etc/borgmatic/config.yaml on 2026-08-18. The reconstruction had guessed
+# 10 patterns; the real list is 22, and it already answers the size questions
+# the old comment left open. Cam excluded Downloads (13G) and the game trees
+# years ago, and deliberately KEEPS Music 14G, .thunderbird 4.2G, .zen 4.9G,
+# flutter 6.0G, Android 3.3G, and the immich/hoarder/surrealdb container data.
+borgmatic_excludes:
+  - "*/.cache/*"
+  - "*/Games/*"
+  - "*/BraveSoftware/*"
+  - "*/retroarch/*"
+  - "*/Steam/*"
+  - "*/lutris/*"
+  - "*/Code - OSS/*"
+  - "*/Microsoft/*"
+  - "*/obsidian/Cache/*"
+  - "*/.librewolf/*"
+  - "*/.BurpSuite/*"
+  - "*/.autopsy/*"
+  - "*/Mailspring/*"
+  - "*/Downloads/*"
+  - "*/.config/discord/*"
+  - "*/.local/share/Trash/*"
+  - "*/virtualenvs/*"
+  - "*/.venv/*"
+  - "*/.azure-functions-core-tools/*"
+  - "*/.cargo/*"
+  - "*.pyc"
+  - "*/node_modules/*"
+  - "*/__pycache__/*"
+  # --- additions beyond the live list, 2026-08-18 ---------------------------
+  # Three only, all re-derivable from a registry or a lockfile. Everything else
+  # the reconstruction had invented was dropped: excluding too little costs
+  # repo space, excluding too much loses data, and this is an adoption.
+  #
+  # Specifically NOT added: "*/tmp/*" and "*/.tmp/*". Those match any directory
+  # literally named tmp at any depth, including real data under
+  # /home/nux/docker_services, and warrig has never had them.
+  - "*/venv/*"
+  - "*/.npm/*"
+  # Ollama model blobs: 14G, re-pullable from the registry.
+  - "/home/nux/docker_services/ollama-gpt/*/models/*"
+
+# Databases: none, deliberately. warrig runs plenty of containerised DBs
+# (immich_postgres, atuin-postgresql, hoppscotch-postgres, plausible_db,
+# surrealdb, meilisearch, ...) but nothing in this repo or its git history says
+# warrig ever dumped them, and inventing dump hooks for ~8 containers unasked
+# is how a 10-minute before-hook stall lands on top of citadel's 03:00 window.
+# The role's default is already [], so there is nothing to set here; see
+# "warrig has none, deliberately" in roles/borgmatic/README.md.

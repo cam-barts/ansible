@@ -1,0 +1,102 @@
+#!/bin/sh
+# rsnapshot-run.sh: invoked by synoschedtask (hourly/daily/weekly/monthly).
+# Runs rsnapshot with the live config path and sends notifications via ntfy
+# with priority by outcome.
+#
+# Replaces the legacy "cmd1 && cmd2 || cmd3" chain whose || branch fired the
+# "Completed" message on FAILURE: that bug hid the April 13 break for a
+# month. Logic is now explicit if/elif/else so success / warnings / failure
+# are routed separately and you only get paged for real failures.
+
+set -u
+
+interval="${1:-hourly}"
+
+config="{{ rsnapshot_config_path }}"
+rsnapshot="{{ rsnapshot_bin }}"
+ntfy="{{ rsnapshot_ntfy_bin }}"
+topic="{{ rsnapshot_ntfy_topic }}"
+
+# Capture wrapper stdout/stderr to a fixed file on /volume1. Overwrite-on-
+# start (single `>`) so the file stays bounded to a single run's worth of
+# output: the 2026-05-12 incident was a 343M unbounded growth on / when
+# this lived under nux's home on /dev/md0.
+exec >"{{ rsnapshot_wrapper_out_path }}" 2>&1
+
+# Serialise the intervals against each other.
+#
+# rsnapshot uses ONE lockfile for all four intervals ({{ rsnapshot_lockfile }}),
+# and on contention it does not wait: add_lockfile() prints "Lockfile ... exists
+# and so does its process, can not continue" and exits 1 before touching a
+# single source. Exit 1 is rsnapshot's generic fatal code, so it lands in the
+# else branch below and pages as FAILED, which is exactly the false alarm the
+# April 13 rewrite above was meant to stop.
+#
+# That collision is structural, not occasional. Measured 2026-08-18: hourly
+# fires at :00 every hour and took 23 to 50 minutes across twelve consecutive
+# runs, while daily fires at a fixed :20. The shortest hourly run already
+# outlasts daily's offset, so daily loses the race every day. Observed
+# 00:00:02 hourly started, 00:20:04 daily started, 00:20:06 daily FAILED,
+# 00:34:28 hourly finished.
+#
+# WAIT, do not skip. The sibling borgmatic-run.sh uses `flock -n` and exits,
+# which is right there because borgmatic has a single daily schedule and a
+# skipped run is just a duplicate. Here the intervals are retention tiers: a
+# skipped daily means daily.0 never rotates and that day's tier is lost
+# silently. Waiting costs a delayed snapshot; skipping costs a missing one.
+# flock queues, so daily simply starts when hourly finishes and the next
+# hourly queues behind it in turn.
+exec 9>"{{ rsnapshot_wrapper_lockfile }}"
+if ! flock -w {{ rsnapshot_lock_wait_seconds }} 9; then
+    # Could not get in within the window. Not a backup failure, so not a page,
+    # but a tier really did not run: if this shows up repeatedly, hourly has
+    # grown past the point where the schedule fits and the DSM times need
+    # spreading out.
+    "$ntfy" publish \
+        -t "rsnapshot $interval skipped" \
+        -p {{ rsnapshot_ntfy_priority_warn }} \
+        --tags=backup,hourglass \
+        "$topic" \
+        "rsnapshot $interval waited {{ rsnapshot_lock_wait_seconds }}s for another interval to finish and gave up; no snapshot taken for this tier" >/dev/null 2>&1 || true
+    exit 0
+fi
+
+"$ntfy" publish \
+    -t "rsnapshot $interval started" \
+    -p {{ rsnapshot_ntfy_priority_start }} \
+    --tags=backup,floppy_disk \
+    "$topic" \
+    "rsnapshot $interval started on {{ inventory_hostname }}" >/dev/null 2>&1 || true
+
+"$rsnapshot" -c "$config" "$interval"
+rc=$?
+
+if [ "$rc" -eq 0 ]; then
+    "$ntfy" publish \
+        -t "rsnapshot $interval ok" \
+        -p {{ rsnapshot_ntfy_priority_ok }} \
+        --tags=backup,white_check_mark \
+        "$topic" \
+        "rsnapshot $interval completed cleanly on {{ inventory_hostname }}" >/dev/null 2>&1 || true
+    exit 0
+elif [ "$rc" -eq 2 ]; then
+    # rsnapshot exit 2 = "completed with warnings" (typically rsync partial
+    # transfers from permission-denied on locked DB / cert files). The
+    # backup itself landed; we want awareness, not a page. Exit 0 so
+    # synoschedtask records it as success.
+    "$ntfy" publish \
+        -t "rsnapshot $interval completed with warnings" \
+        -p {{ rsnapshot_ntfy_priority_warn }} \
+        --tags=backup,information_source \
+        "$topic" \
+        "rsnapshot $interval completed but some files weren't transferred (perms, locked DBs, etc.), see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
+    exit 0
+else
+    "$ntfy" publish \
+        -t "rsnapshot $interval FAILED" \
+        -p {{ rsnapshot_ntfy_priority_fail }} \
+        --tags=backup,warning \
+        "$topic" \
+        "rsnapshot $interval exited $rc on {{ inventory_hostname }}, see {{ rsnapshot_log_path }}" >/dev/null 2>&1 || true
+    exit "$rc"
+fi

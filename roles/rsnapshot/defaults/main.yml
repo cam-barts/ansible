@@ -1,0 +1,115 @@
+---
+# Snapshot tree on /volume1. Preserves the existing pi_rsnapshots/ directory
+# so historical hardlinked rotations age out naturally instead of being
+# orphaned by a path move. (Strategy doc §5 had this same path; Cam's
+# 2026-05-12 chat instruction said /volume1/pi_rsnapshots/, direct-fix
+# crew kept the existing tree to avoid a one-off migration.)
+rsnapshot_snapshot_root: /volume1/NetBackup/pi_rsnapshots/
+
+# Config + lockfile live under nux's home. On gastown that path is on
+# /dev/md0 (the 2.3G DSM system root), NOT bind-mounted from /volume1.
+# The earlier "upgrade-safe" comment was wrong. Config and lockfile stay
+# put because they're small; logs were moved to /volume1 below after the
+# 2026-05-12 incident where rsnapshot.log (506M) + rsnapshot-run.last.out
+# (343M) filled / to 100%.
+rsnapshot_config_path: /var/services/homes/nux/rsnapshot.conf
+rsnapshot_lockfile: /var/services/homes/nux/rsnapshot.pid
+
+# Wrapper-level lock, separate from rsnapshot's own. rsnapshot shares one
+# lockfile across all four intervals and aborts with exit 1 rather than
+# waiting, which pages as FAILED. The wrapper takes this lock first and waits,
+# so overlapping intervals queue instead of colliding. See
+# templates/rsnapshot-run.sh.j2 for the measurements behind this.
+rsnapshot_wrapper_lockfile: /var/services/homes/nux/rsnapshot-run.lock
+
+# How long an interval waits for the lock before giving up and reporting
+# "skipped" at the warn priority. One hour: comfortably longer than the
+# slowest hourly observed (50 min on 2026-08-18) so a normal queue always
+# clears, short enough that a genuinely stuck run cannot stack invocations
+# indefinitely. flock is util-linux 2.33.2 on gastown, verified present.
+rsnapshot_lock_wait_seconds: 3600
+
+# Excludes file. Tiny and read on every rsnapshot invocation, so stays on
+# the system fs next to the config rather than chasing it out to /volume1.
+# Currently scopes warrig's symlink-loop paths (/home/home/, /home/nux/home/)
+# that were blowing up native_cp_al rotation.
+rsnapshot_excludes_path: /var/services/homes/nux/rsnapshot.excludes
+
+# Log directory lives on /volume1, sibling to the snapshot tree. Owned by
+# nux so the wrapper (which runs as root under synoschedtask, but the
+# directory itself only needs to be writable by whoever ends up running
+# rsnapshot) can write here without DSM root-path pressure.
+rsnapshot_log_dir: /volume1/NetBackup/rsnapshot-logs
+rsnapshot_log_path: "{{ rsnapshot_log_dir }}/rsnapshot.log"
+rsnapshot_wrapper_out_path: "{{ rsnapshot_log_dir }}/rsnapshot-run.last.out"
+
+# Binaries. rsnapshot symlink survives the 1.5.1-5 install; ntfy is the
+# binwiederhier standalone v1.29.0 unpacked in nux's home.
+rsnapshot_bin: /usr/local/bin/rsnapshot
+rsnapshot_ntfy_bin: /var/services/homes/nux/ntfy_1.29.0_linux_x86_64/ntfy
+
+# Wrapper that synoschedtask 4/5/6/7 call. Lives in nux's home for the
+# same reason as the config: editable without sudo.
+rsnapshot_wrapper_path: /var/services/homes/nux/rsnapshot-run.sh
+rsnapshot_wrapper_owner: nux
+rsnapshot_wrapper_group: users
+
+# Retention. Locked-in 2026-05-12 (24h/7d/4w/12m).
+rsnapshot_retain_hourly: 24
+rsnapshot_retain_daily: 7
+rsnapshot_retain_weekly: 4
+rsnapshot_retain_monthly: 12
+
+# Logging: dropped to 2/3 on 2026-08-17. The temporary 4/4 was there to
+# surface per-source rsync chatter while the config bedded in; it has, and the
+# per-file chatter had grown /var/log/rsnapshot on gastown to 1.1G unrotated.
+# verbose=2 logs each rsnapshot command, loglevel=3 keeps warnings/errors in
+# the logfile. Raise back to 4/4 temporarily when debugging a specific source.
+rsnapshot_verbose: 2
+rsnapshot_loglevel: 3
+
+# SSH key gastown uses to pull from each source. Same key already trusts
+# warrig and the Pis.
+rsnapshot_ssh_key: /var/services/homes/nux/.ssh/rsnapshot_key
+rsnapshot_ssh_args: "-i {{ rsnapshot_ssh_key }} -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+
+# Notification settings. Single topic per Cam's 2026-05-12 decision:
+# differentiate by priority + tag, not by topic. Real topic is set via
+# inventory/group_vars/synology/vault.yml: this default is a sentinel so
+# an unconfigured run fails loudly instead of silently posting to a public
+# ntfy.sh topic.
+#
+# HOST-QUALIFY THE VAULT VALUE: `ntfy.coder.cam/<topic>`, not a bare `<topic>`.
+# ntfy accepts host/topic and resolves it without reading any client config
+# (`ntfy send myserver.com/mytopic ...`, per its own --help). Changed to that
+# form 2026-08-18 and verified end to end: published from gastown as nux, who
+# has no ntfy config at any path, and the message arrived on the self-hosted
+# server with the same message id.
+#
+# Why it matters. The wrapper runs as root under synoschedtask. With a bare
+# topic, the only thing keeping alerts on the self-hosted server was root's
+# own ~/.config/ntfy/client.yml, which this repo does not manage and nux
+# cannot read. If that file were ever lost, every publish would go to the
+# PUBLIC ntfy.sh under a topic named after the lab, and nothing would say so:
+# the CLI exits 0 either way and each publish ends in `|| true`. Backup alerts
+# would just stop arriving. Host-qualifying removes that dependency entirely.
+#
+# Note the topic name itself is unchanged by this; ntfy records the message
+# under `<topic>`, not `host/topic`, so existing subscriptions keep working.
+rsnapshot_ntfy_topic: changeme_set_via_vault
+rsnapshot_ntfy_priority_start: min
+rsnapshot_ntfy_priority_ok: default
+rsnapshot_ntfy_priority_warn: low
+rsnapshot_ntfy_priority_fail: high
+
+# synoschedtask IDs that drive rsnapshot. Cam's existing layout: 4=hourly,
+# 5=daily, 6=weekly, 7=monthly. Set to [] to skip cron rewriting if Cam
+# wants to manage the task definitions through DSM UI instead.
+rsnapshot_synoschedtask_ids:
+  - { id: 4, interval: hourly }
+  - { id: 5, interval: daily }
+  - { id: 6, interval: weekly }
+  - { id: 7, interval: monthly }
+
+# Force rsync --link-dest fallback for rotation. See template comment for why.
+rsnapshot_link_dest: 1

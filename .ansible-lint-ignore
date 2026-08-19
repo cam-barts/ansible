@@ -1,4 +1,11 @@
 # One 259-char shell one-liner inside a block scalar (bunkerweb mariadb dump
 # invocation). Breaking it would change the rendered dump script that is
 # byte-reconciled against live citadel; not worth the churn.
-roles/borgmatic_citadel/defaults/main.yml yaml[line-length]
+# Moved here from roles/borgmatic_citadel/defaults/main.yml when the two
+# per-host borgmatic roles merged into roles/borgmatic: borgmatic_databases is
+# per-host data, so it now lives in host_vars. This path is matched literally,
+# so a stale entry fails silently (the rule just starts firing at the new
+# location) rather than erroring.
+# Moved again when citadel's host_vars became a directory to carry a vault.yml
+# alongside (bunkerweb_stack secrets).
+inventory/host_vars/citadel/vars.yml yaml[line-length]

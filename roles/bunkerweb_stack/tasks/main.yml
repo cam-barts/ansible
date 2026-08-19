@@ -1,0 +1,90 @@
+---
+# This role manages the compose FILE and deliberately takes no container
+# action. Reconciling citadel's BunkerWeb stack is a human decision (it is the
+# sole ingress for ~48 hostnames and carries cloudflared), so there is no
+# `docker_compose_v2` up task here and there should never be one. See README.
+
+# diff: false so `ansible-playbook --diff` cannot print the rendered secrets.
+- name: Template the BunkerWeb compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ bunkerweb_stack_dir }}/docker-compose.yml"
+    owner: "{{ bunkerweb_stack_file_owner }}"
+    group: "{{ bunkerweb_stack_file_group }}"
+    mode: "{{ bunkerweb_stack_file_mode }}"
+    backup: true
+  diff: false
+
+# The guard, modelled on roles/cadvisor. There, `docker_container` recreates on
+# any spec difference, so the role dry-runs the spec and refuses. Here the
+# equivalent question is "would `docker compose up` recreate anything", and it
+# is answered WITHOUT invoking compose up (not even --dry-run) by comparing the
+# per-service config hashes the rendered file produces against the
+# com.docker.compose.config-hash label on the running containers -- which is
+# exactly the comparison compose itself makes when deciding to recreate.
+#
+# verbose_output is required: the module's trimmed container output drops
+# Labels, which is the only field this needs.
+- name: Read the docker log driver and the live BunkerWeb containers
+  community.docker.docker_host_info:
+    containers: true
+    containers_filters:
+      label: "com.docker.compose.project={{ bunkerweb_stack_project }}"
+    verbose_output: true
+  register: bunkerweb_live
+
+# Read-only: `config --hash` renders the file and prints "<service> <hash>"
+# lines. It creates, starts, stops and removes nothing.
+- name: Compute the config hashes the rendered compose file produces
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ bunkerweb_stack_project }}"
+      - --project-directory
+      - "{{ bunkerweb_stack_dir }}"
+      - --file
+      - "{{ bunkerweb_stack_dir }}/docker-compose.yml"
+      - config
+      - --hash=*
+  changed_when: false
+  register: bunkerweb_desired_hashes
+  when:
+    - not (bunkerweb_allow_recreate | bool)
+    - bunkerweb_live.host_info.LoggingDriver | default('') == 'loki'
+
+- name: Refuse to leave the BunkerWeb stack needing a recreate under loki
+  ansible.builtin.fail:
+    msg: >-
+      The compose file at {{ bunkerweb_stack_dir }} no longer matches the
+      running containers ({{ bunkerweb_stale_services }}), so the next
+      `docker compose up` would recreate them. {{ inventory_hostname }}'s
+      dockerd defaults to the `loki` log driver, where stopping/removing a
+      container deadlocks the daemon, and this stack is the sole ingress for
+      every proxied hostname plus the cloudflared tunnel. Reconcile it by hand,
+      on purpose, with a way to unwedge dockerd. The rendered file has been
+      written (previous copy kept as a .bak alongside it); only the container
+      reconciliation is refused. Set bunkerweb_allow_recreate: true to silence
+      this guard.
+  vars:
+    # A service is stale when its live config-hash label no longer appears in
+    # the rendered file's hashes. Written as a loop rather than selectattr
+    # because the label keys contain dots, which selectattr would split on.
+    # Joined to a string, not a list, so the `when` below needs no type
+    # coercion. Empty when the hash task was skipped, i.e. the guard is off.
+    bunkerweb_stale_services: >-
+      {%- set stale = [] -%}
+      {%- for labels in bunkerweb_live.containers | map(attribute='Labels')
+              if bunkerweb_desired_hashes.stdout is defined -%}
+      {%- if labels['com.docker.compose.config-hash'] not in bunkerweb_desired_hashes.stdout -%}
+      {%- set _ = stale.append(labels['com.docker.compose.service']) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{- stale | sort | join(', ') -}}
+  # `| bool` is load-bearing: see the comment on bunkerweb_allow_recreate in
+  # defaults/main.yml. A bare truth test would disarm this guard for
+  # `-e bunkerweb_allow_recreate=false` too.
+  when:
+    - not (bunkerweb_allow_recreate | bool)
+    - bunkerweb_stale_services | length > 0

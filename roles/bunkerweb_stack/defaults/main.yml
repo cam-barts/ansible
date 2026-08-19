@@ -1,0 +1,37 @@
+---
+# citadel's BunkerWeb compose project. The stack is the sole ingress for ~48
+# hostnames and carries `cloudflared` as one of its services, so this role
+# manages the compose FILE and nothing else; see README.md.
+
+bunkerweb_stack_dir: /home/nux/docker/bunkerweb
+
+# Compose project name. Not derived from the directory: `cloudflared` sets
+# container_name, and the guard below matches live containers on the
+# com.docker.compose.project label, so this has to be the real project name.
+bunkerweb_stack_project: bunkerweb
+
+# The live file is 0644 nux:nux. Reproduced rather than tightened: the point of
+# this role is that applying it changes nothing on disk.
+bunkerweb_stack_file_owner: nux
+bunkerweb_stack_file_group: nux
+bunkerweb_stack_file_mode: "0644"
+
+# citadel's dockerd defaults to the `loki` log driver, where tearing a
+# container down deadlocks the daemon. The role refuses to run at all when the
+# rendered file no longer matches the running containers, because the next
+# `docker compose up` would then be a recreate. Set true only when you are
+# deliberately about to rebuild the stack by hand and are ready to unwedge
+# dockerd. See README, "the guard".
+#
+# `| bool` on every use of this is load-bearing, not decoration: extra vars
+# arrive as strings and any non-empty string is truthy, so a bare
+# `not bunkerweb_allow_recreate` is False for BOTH `-e ..._allow_recreate=true`
+# and `-e ..._allow_recreate=false`. The second would silently disarm the guard
+# while reading like it armed it. Same reasoning as roles/cadvisor.
+bunkerweb_allow_recreate: false
+
+# Secrets have no defaults on purpose: an undefined-variable failure is the
+# correct outcome if this role is ever applied to a host without them.
+# Defined in inventory/host_vars/citadel/vars.yml as passthroughs to vault.yml:
+#   bunkerweb_db_password   -> vault_bunkerweb_db_password
+#   bunkerweb_api_password  -> vault_bunkerweb_api_password

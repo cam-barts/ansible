@@ -13,8 +13,16 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
-        exclude: ^(roles/.+/templates/|.+\.j2$|inventory/group_vars/.+/vault\.yml$)
+        exclude: ^(roles/.+/templates/|.+\.j2$|inventory/(group|host)_vars/.+/vault\.yml$)
       - id: check-merge-conflict
+      # No exclusions. roles/bunkerweb_stack's template used to need one: it is
+      # a byte-faithful copy of citadel's live compose file, which carried
+      # trailing whitespace on two lines plus a trailing blank line, and these
+      # two hooks would have silently stripped them and broken the byte match.
+      # The whitespace has since been removed from the live file instead, which
+      # was verified config-inert (all seven compose config-hashes unchanged),
+      # so the copy is faithful AND hook-clean. Keep it that way: re-adding an
+      # exclude here is a sign the live file drifted back.
       - id: end-of-file-fixer
       - id: trailing-whitespace
 
