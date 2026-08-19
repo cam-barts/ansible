@@ -126,8 +126,12 @@ Neither has a default in `defaults/main.yml`, on purpose: applying this role to
 a host without the vault should fail on an undefined variable, not render a
 compose file with an empty password.
 
-The rendered file is `0644 nux:nux`, matching the live host. The template task
-sets `diff: false` so `--diff` cannot print the secrets to the terminal.
+The rendered file is `0640 nux:nux`. It was `0644` to match the live host, which
+meant the MariaDB password was world-readable on citadel; tightened once the
+template existed to keep it that way. `docker compose` reads the file as the
+invoking user (`nux`, who owns it), so nothing needed the world bit. File mode is
+not part of the config hash, so the change recreated nothing. The template task
+also sets `diff: false` so `--diff` cannot print the secrets to the terminal.
 
 ## Byte-fidelity
 

@@ -9,6 +9,18 @@
 citadel_lan_ip: 192.168.1.88
 warrig_lan_ip: 192.168.1.168
 
+# Pin the interpreter rather than letting ansible discover it. Discovery warns
+# on every run that "future installation of another Python interpreter could
+# cause a different interpreter to be discovered", and that is not theoretical:
+# gastown already needed a host_vars pin because DSM's stock python3 (3.8) is
+# below ansible-core's floor. citadel and warrig are currently on 3.14 by
+# discovery.
+#
+# /usr/bin/python3 rather than a versioned path, so a minor upgrade does not
+# break the pin. gastown's host_vars pin (/usr/local/bin/python3.12) still wins:
+# host_vars outrank group_vars.
+ansible_python_interpreter: /usr/bin/python3
+
 # software to install everywhere
 package_list:
   # - mask

@@ -14,7 +14,7 @@ bunkerweb_stack_project: bunkerweb
 # this role is that applying it changes nothing on disk.
 bunkerweb_stack_file_owner: nux
 bunkerweb_stack_file_group: nux
-bunkerweb_stack_file_mode: "0644"
+bunkerweb_stack_file_mode: "0640"
 
 # citadel's dockerd defaults to the `loki` log driver, where tearing a
 # container down deadlocks the daemon. The role refuses to run at all when the
