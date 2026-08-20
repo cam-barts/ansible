@@ -104,7 +104,13 @@
           - --rm
           - -v
           - /var/run/docker.sock:/var/run/docker.sock
-          - ghcr.io/nicholas-fedor/watchtower:latest
+          # Digest-pinned on purpose: this container gets a read-write docker
+          # socket on every host at once, and it comes from a personal fork.
+          # `:latest` would hand fleet-wide root to whatever that account
+          # publishes next. Bump the pin deliberately:
+          #   curl -s https://api.github.com/repos/nicholas-fedor/watchtower/releases/latest
+          #   docker manifest inspect ghcr.io/nicholas-fedor/watchtower:<tag>
+          - ghcr.io/nicholas-fedor/watchtower:1.21.0@sha256:d76a95a54ab636968f77cb1780fb597b3e28511b535a86e3af212a290ef4d743
           - --run-once
       register: watchtower_run
       # The real summary line, copied from a live run on 2026-08-19:

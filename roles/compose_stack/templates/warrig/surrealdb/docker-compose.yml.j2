@@ -10,6 +10,11 @@ services:
     volumes:
       - ./mydata:/mydata
     image: surrealdb/surrealdb:v2
-    command: start rocksdb:/mydata/mydatabase.db --log debug --user nux --password {{ surrealdb_password }} --temporary-directory /tmp
+    # Credentials via env, not argv: --password would be world-readable in
+    # `ps` / /proc/*/cmdline / docker inspect on the host.
+    environment:
+      SURREAL_USER: nux
+      SURREAL_PASS: "{{ surrealdb_password }}"
+    command: start rocksdb:/mydata/mydatabase.db --log debug --temporary-directory /tmp
     # command: fix surrealkv://mydata/mydatabase.db
     restart: unless-stopped

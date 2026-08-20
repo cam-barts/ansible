@@ -8,3 +8,7 @@
 
 # ansible-lint installs collections + caches here when run from the repo root
 .ansible/
+
+# Session-local Claude Code settings; only ignored globally on this machine
+# otherwise. Never carries secrets by design, ignored for hygiene.
+.claude/settings.local.json

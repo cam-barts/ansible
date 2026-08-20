@@ -19,20 +19,40 @@
   args:
     chdir: "{{ ansible_env.HOME }}/.dotfiles"
 
-# Installer script; no get_url/uri equivalent.
-- name: Install Starship prompt  # noqa: command-instead-of-module
-  ansible.builtin.shell: |
-    set -o pipefail
-    curl -sS https://starship.rs/install.sh | sh -s -- -b "/usr/local/bin" -y
-  args:
-    creates: "/usr/local/bin/starship"
+# Checksum-pinned release tarballs instead of the upstream curl|sh
+# installers: this box sits on the HTB VPN, and those scripts run
+# unauthenticated code as root. To bump, take the new version's
+# `*-x86_64-unknown-linux-gnu.tar.gz.sha256` from the GitHub release page.
+- name: Download Starship release
+  ansible.builtin.get_url:
+    url: https://github.com/starship/starship/releases/download/v1.26.0/starship-x86_64-unknown-linux-gnu.tar.gz
+    dest: /tmp/starship.tar.gz
+    checksum: sha256:321f0dd7af8340a5f2e6a8fec6538a04f617486f9ec70d878f91c09cd8deef22
+    mode: "0644"
+
+- name: Install Starship prompt
+  ansible.builtin.unarchive:
+    src: /tmp/starship.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - starship
   become: true
 
+- name: Download Atuin release
+  ansible.builtin.get_url:
+    url: https://github.com/atuinsh/atuin/releases/download/v18.19.0/atuin-x86_64-unknown-linux-gnu.tar.gz
+    dest: /tmp/atuin.tar.gz
+    checksum: sha256:4d7559ada42407ee8ddc62349acf134dd297568d032c45a746a7aef8a6860648
+    mode: "0644"
+
 - name: Install Atuin history tool
-  ansible.builtin.shell: bash <(curl --proto '=https' --tlsv1.2 -sSf https://setup.atuin.sh)
-  args:
-    executable: /bin/bash
-    creates: "/usr/local/bin/atuin"
-  environment:
-    ATUIN_INSTALL_DIR: "/usr/local/bin"
+  ansible.builtin.unarchive:
+    src: /tmp/atuin.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+    include:
+      - atuin-x86_64-unknown-linux-gnu/atuin
   become: true

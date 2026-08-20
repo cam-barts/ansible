@@ -5,7 +5,14 @@
 #
 # Invoke with:
 #   ansible-pull -U https://github.com/cam-barts/ansible.git -C stable \
-#     -i inventory/ pull/local.yml
+#     --verify-commit -i inventory/ pull/local.yml
+#
+# --verify-commit is not optional when this goes live: a pull timer executes
+# whatever the branch HEAD says as root, so a GitHub account compromise is
+# root on every Pi. It requires the `stable` branch tip to carry a signed
+# commit (git config commit.gpgsign true + verified key), so set the signing
+# up before pushing `stable` for the first time. The vault password will also
+# need to exist on each Pi (0600, root-owned) for the vaulted vars to render.
 #
 # `configure_ntfy_client.yml` is `hosts: all` (it's shared with non-Pi
 # hosts elsewhere in the repo); when run via ansible-pull on a Pi, the

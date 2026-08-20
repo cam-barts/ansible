@@ -130,11 +130,16 @@ borgmatic_consistency_checks:
   - {name: extract, frequency: "1 month"}
 
 # --- ntfy -------------------------------------------------------------------
-# Single topic [redacted-vaulted-topic] for both hosts: warrig publishes there too
-# (confirmed against its live config 2026-08-18), with the message body
-# carrying the per-host distinction. Named priorities, no numeric -p N.
+# Single shared topic for both hosts: warrig publishes there too (confirmed
+# against its live config 2026-08-18), with the message body carrying the
+# per-host distinction. Named priorities, no numeric -p N.
+#
+# The topic name is vaulted (group_vars/borgmatic_source), same as
+# rsnapshot_ntfy_topic: the server runs without auth, so a topic name IS the
+# credential — anyone who knows it can read backup timing and forge "backup
+# OK" messages.
 borgmatic_ntfy_bin: /usr/bin/ntfy
-borgmatic_ntfy_topic: [redacted-vaulted-topic]
+borgmatic_ntfy_topic: changeme_set_via_vault
 borgmatic_ntfy_priority_start: min
 borgmatic_ntfy_priority_ok: default
 borgmatic_ntfy_priority_fail: urgent

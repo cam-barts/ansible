@@ -15,9 +15,11 @@
   ansible.builtin.file:
     path: "{{ rsnapshot_snapshot_root }}"
     state: directory
-    # Matches the live directory (DSM shared-folder default); tightening it
-    # is a deliberate change to make on gastown, not here.
-    mode: "0777"
+    # 0700: the tree holds full home-directory backups of every lab host
+    # (.ssh keys included). nux owns it; rsnapshot itself runs as root under
+    # synoschedtask, so root's writes are unaffected. Was 0777 (the DSM
+    # shared-folder default) until the 2026-08-20 security pass.
+    mode: "0700"
 
 # /volume1/NetBackup/ is root-owned at the top level; nux can't mkdir
 # beneath it without become. Keeps log output off /dev/md0 (the 2.3G DSM
@@ -58,13 +60,19 @@
     mode: "0644"
     validate: "{{ rsnapshot_bin }} -c %s configtest"
 
+# Accepted standing escalation: the wrapper is nux-owned but executed as root
+# by synoschedtask, so nux edits become root. Unfixable from here (no sudo on
+# DSM, and ansible_become: false in host_vars overrides any task-level
+# become) and moot anyway: nux sits in `administrators`, which has group
+# write on synoschedule.d/root/*.task itself. 0750 keeps the vaulted ntfy
+# topic inside out of other DSM accounts' hands; root executes regardless.
 - name: Install rsnapshot-run wrapper
   ansible.builtin.template:
     src: rsnapshot-run.sh.j2
     dest: "{{ rsnapshot_wrapper_path }}"
     owner: "{{ rsnapshot_wrapper_owner }}"
     group: "{{ rsnapshot_wrapper_group }}"
-    mode: "0755"
+    mode: "0750"
 
 - name: Point synoschedtask entries at the wrapper
   ansible.builtin.include_tasks: synoschedtask.yml

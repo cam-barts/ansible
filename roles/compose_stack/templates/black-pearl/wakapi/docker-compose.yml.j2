@@ -24,8 +24,10 @@ services:
     db:
         image: postgres:17
         restart: unless-stopped
+        # Loopback only: wakapi reaches the db over the compose network; the
+        # host port exists for local psql, not the LAN.
         ports:
-          - '5432:5432'
+          - '127.0.0.1:5432:5432'
         environment:
           - POSTGRES_USER=wakapi
           - POSTGRES_PASSWORD={{ wakapi_db_password }}        # alternatively, set POSTGRES_PASSWORD directly without the use of secrets

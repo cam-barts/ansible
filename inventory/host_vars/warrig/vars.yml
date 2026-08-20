@@ -212,7 +212,7 @@ compose_stacks:
   dashy:
     files:
       - { src: warrig/dashy/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
-      - { src: warrig/dashy/conf.yml, dest: conf.yml, mode: "0600" }
+      - { src: warrig/dashy/conf.yml.j2, dest: conf.yml, mode: "0600" }
   excalidraw:
     files:
       - { src: warrig/excalidraw/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
@@ -290,6 +290,7 @@ ansible_semaphore_admin_password: "{{ vault_ansible_semaphore_admin_password }}"
 ansible_semaphore_db_pass: "{{ vault_ansible_semaphore_db_pass }}"
 ansible_semaphore_postgres_password: "{{ vault_ansible_semaphore_postgres_password }}"
 atuin_db_password: "{{ vault_atuin_db_password }}"
+dashy_admin_hash: "{{ vault_dashy_admin_hash }}"
 flatnotes_password: "{{ vault_flatnotes_password }}"
 flatnotes_secret_key: "{{ vault_flatnotes_secret_key }}"
 hoarder_meili_master_key: "{{ vault_hoarder_meili_master_key }}"

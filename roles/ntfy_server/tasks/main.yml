@@ -21,7 +21,10 @@
     name: "{{ ntfy_server_image }}:{{ ntfy_server_version }}"
     source: pull
 
+# no_log: the spec carries the vaulted web-push private key in its env; a
+# failure or -v would otherwise print the full module args.
 - name: Run ntfy container
   community.docker.docker_container:
     name: "{{ ntfy_server_container_name }}"
   args: "{{ ntfy_server_container_spec }}"
+  no_log: true

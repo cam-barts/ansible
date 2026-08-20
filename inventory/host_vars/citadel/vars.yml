@@ -147,6 +147,10 @@ borgmatic_databases:
 bunkerweb_db_password: "{{ vault_bunkerweb_db_password }}"
 # BunkerWeb API password for the `nux` API user (bw-api's API_PASSWORD).
 bunkerweb_api_password: "{{ vault_bunkerweb_api_password }}"
+# WAF/API whitelist CIDRs. Vaulted because the list includes the home WAN IP;
+# publishing it next to the hostname list would hand out the Cloudflare-bypass
+# origin address.
+bunkerweb_whitelist_ips: "{{ vault_bunkerweb_whitelist_ips }}"
 
 # --- cloudflared -------------------------------------------------------------
 # Plaintext passthroughs for the two cloudflared secrets in vault.yml, same
@@ -181,7 +185,7 @@ compose_stacks:
       - { src: citadel/searxng-docker/.env, dest: .env, mode: "0644" }
   taskwarrior:
     files:
-      - { src: citadel/taskwarrior/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: citadel/taskwarrior/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
   windmill:
     files:
       - { src: citadel/windmill/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
@@ -190,6 +194,9 @@ compose_stacks:
       - { src: citadel/windmill/garage/config/garage.toml.j2, dest: garage/config/garage.toml, mode: "0640" }
 
 # Secret passthroughs for compose_stack templates; values live in vault.yml.
+# taskchampion-sync-server runs with CREATE_CLIENTS=false, so this UUID is the
+# only credential the server checks — vaulted, not tracked in plaintext.
+taskwarrior_sync_client_id: "{{ vault_taskwarrior_sync_client_id }}"
 windmill_db_password: "{{ vault_windmill_db_password }}"
 windmill_garage_rpc_secret: "{{ vault_windmill_garage_rpc_secret }}"
 windmill_garage_admin_token: "{{ vault_windmill_garage_admin_token }}"

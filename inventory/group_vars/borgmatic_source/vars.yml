@@ -1,0 +1,9 @@
+# Plaintext passthroughs for the secrets in vault.yml next door, same pattern
+# as inventory/group_vars/synology/vars.yml.
+#
+# The ntfy topic is vaulted because the server runs without auth: the topic
+# name is the only thing gating who can read (backup timing = host-idle
+# signal) or write (forged "backup OK" suppresses real failures). The old
+# name was committed in plaintext, so it was rotated when it moved here —
+# re-subscribe any devices after deploying.
+borgmatic_ntfy_topic: "{{ vault_borgmatic_ntfy_topic }}"

@@ -1,0 +1,511 @@
+appConfig:
+  layout: auto
+  iconSize: large
+  language: en
+  theme: one-dark
+  startingView: default
+  defaultOpeningMethod: newtab
+  statusCheck: true
+  statusCheckInterval: 300
+  faviconApi: faviconkit
+  routingMode: history
+  enableMultiTasking: false
+  webSearch:
+    disableWebSearch: false
+    searchEngine: custom
+    openingMethod: newtab
+    searchBangs:
+      '!': reddit
+      /: google
+    customSearchEngine: https://searx.coder.cam/search?q=
+  enableFontAwesome: true
+  hideComponents:
+    hideHeading: false
+    hideNav: false
+    hideSearch: false
+    hideSettings: false
+    hideFooter: false
+    hideSplashScreen: false
+  auth:
+    enableGuestAccess: true
+    users:
+    - user: Cam
+      hash: {{ dashy_admin_hash }}
+      type: admin
+    enableKeycloak: false
+  allowConfigEdit: true
+  enableServiceWorker: true
+  disableContextMenu: false
+  disableUpdateChecks: false
+  disableSmartSort: false
+  enableErrorReporting: false
+  showSplashScreen: false
+  widgetsAlwaysUseProxy: false
+  enableMaterialDesignIcons: false
+  preventWriteToDisk: false
+  preventLocalSave: false
+  disableConfiguration: false
+  backgroundImg: ''
+  customColors:
+    one-dark:
+      primary: '#c5cad3'
+      background: '#282c33'
+      background-darker: '#1c1f23'
+pageInfo:
+  title: The Dashboard
+  description: / to search Google, ! for reddit
+  navLinks:
+  - title: Home
+    path: /
+    target: newtab
+  - title: Blog
+    path: https://cam-barts.coder.cam
+    target: newtab
+  footerText: ''
+sections:
+- name: Knowledge & Notes
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: SilverBullet
+    url: https://bullet.coder.cam
+    id: 141576db_bulletcodercam
+    description: >-
+      Those that know me well probably never would have guess, but I've basically completely moved out of Obsidian, and now
+      do all of my note taking in SilverBullet.
+    icon: hl-silverbullet
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Karakeep
+    url: https://hoarder.coder.cam
+    id: bce763d9_hoardercodercam
+    description: >-
+      This is my default bookmarking service. It has some neat functionality around saving cached versions of web pages using
+      monolith.
+    icon: hl-karakeep
+    tags:
+    - mode:detect
+    - host:warrig
+  - title: Wakapi
+    url: https://wakapi.coder.cam
+    id: 02829c71_wakapicodercam
+    description: >-
+      I'm an absolute sucker for two things in this world: - metrics - open source api compatible versions of paid tools
+    icon: hl-wakapi
+    tags:
+    - mode:block
+    - host:black-pearl
+  icon: fas fa-book
+- name: Media & Entertainment
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: Jellyfin
+    url: https://jellyfin.coder.cam
+    id: d50a8c7b_jellyfincodercam
+    description: >-
+      Okay, its not what you think (though I've very much not opposed to what you might expect this to be used for).
+    icon: hl-jellyfin
+    tags:
+    - mode:block
+    - host:warrig
+  - title: MeTube
+    url: https://metube.shadeking.cam
+    id: caba95e6_metubeshadekingcam
+    description: >-
+      While I have Pinchflat for my subscriptions, I use metube to download one-off videos from folks I don't subscribe to,
+      which also goes to Jellyfin.
+    icon: hl-metube
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Pinchflat
+    url: https://pinchflat.coder.cam
+    id: eb461441_pinchflatcodercam
+    description: >-
+      Up until recently when I started having issues with it, I used to use ytdl-sub to download videos from channels I subscribed
+      to and stored them in my Jellyfin instance.
+    icon: hl-pinchflat
+    tags:
+    - mode:block
+    - host:warrig
+  icon: fas fa-photo-film
+- name: Storage & Files
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: Files
+    url: https://files.shadeking.cam
+    id: 1d7a62de_filesshadekingcam
+    description: File browser
+    icon: fas fa-folder-open
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Flatnotes
+    url: https://flatnotes.coder.cam
+    id: 9bfc5540_flatnotescodercam
+    description: >-
+      I experiment a lot with different ways to get notes into my Obsidian vault, and Flatnotes works well within my system
+      since they save as just regular markdown files.
+    icon: hl-flatnotes
+    tags:
+    - mode:block
+    - host:warrig
+  - title: S3 Browser
+    url: https://s3-browser.shadeking.cam
+    id: ed1668d2_s3browsershadekingca
+    description: Web browser UI for the Garage S3 backend
+    icon: fas fa-folder-tree
+    tags:
+    - mode:block
+    - host:citadel
+  - title: Garage S3
+    description: S3-compatible object storage (Garage)
+    icon: hl-garage
+    url: https://s3.shadeking.cam
+    tags:
+    - mode:detect
+    - host:citadel
+    statusCheckAcceptCodes: '403'
+    id: ccdb48d0_s3shadekingcam
+  - title: WebDAV
+    description: WebDAV endpoint backed by Gastown
+    icon: fas fa-server
+    url: https://webdav.coder.cam
+    tags:
+    - mode:detect
+    - host:gastown
+    statusCheckAcceptCodes: '404'
+    id: ec95c9e8_webdavcodercam
+  icon: fas fa-folder-tree
+- name: Search & Aggregation
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: Fulltext
+    url: https://fulltext.coder.cam
+    id: f07628e7_fulltextcodercam
+    description: Full-text RSS feed converter (Morss)
+    icon: fas fa-feather
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Morss
+    url: https://morss.coder.cam
+    id: b79c3ada_morsscodercam
+    description: >-
+      Before I figured out how to update the configuration on this site's rss feed to allow for full text rss, I deployed
+      this to help some friends get the full text of my blog posts in their RSS reader.
+    icon: fas fa-rss
+    tags:
+    - mode:block
+    - host:warrig
+  - title: SearXNG
+    url: https://searx.coder.cam
+    id: 1a1e19d7_searxcodercam
+    description: This is my default search engine.
+    icon: hl-searxng
+    tags:
+    - mode:block
+    - host:citadel
+  icon: fas fa-magnifying-glass
+- name: Productivity Tools
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: CyberChef
+    url: https://cyberchef.coder.cam
+    id: 7fb84926_cyberchefcodercam
+    description: >-
+      This is the open source version of the https://gchq.github.io/CyberChef/ application.
+    icon: fas fa-hat-chef
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Draw
+    url: https://draw.coder.cam
+    id: 6d69c523_drawcodercam
+    description: drawio diagram editor
+    icon: fas fa-pencil-ruler
+    tags:
+    - mode:block
+    - host:warrig
+  - title: String-Is
+    url: https://format.coder.cam
+    id: de5fc819_formatcodercam
+    description: This is the open source version of the https://string.is web app.
+    icon: fas fa-tools
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Hoppscotch
+    url: https://hoppscotch.coder.cam
+    id: 20986ebe_hoppscotchcodercam
+    description: Open-source API development ecosystem
+    icon: hl-hoppscotch
+    tags:
+    - mode:block
+    - host:warrig
+    sublinks:
+    - title: Admin
+      url: https://hoppscotch-admin.coder.cam
+    - title: Backend
+      url: https://hoppscotch-backend.coder.cam
+  - title: Bin
+    url: https://paste.coder.cam
+    id: e5f02770_pastecodercam
+    description: A minimal pastebin that also accepts binary files (images, PDFs)
+    icon: si-pastebin
+    tags:
+    - mode:block
+    - host:warrig
+  - title: TTS
+    url: https://tts.coder.cam
+    id: ad36afca_ttscodercam
+    description: Text-to-speech service
+    icon: fas fa-volume-up
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Webhook.Site
+    url: https://webhook.coder.cam
+    id: 227516e0_webhookcodercam
+    description: This is the open source version of the https://webhook.site/ web app.
+    icon: fas fa-chart-network
+    tags:
+    - mode:block
+    - host:warrig
+  icon: fas fa-toolbox
+- name: URL Shortener
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: Kutt
+    url: https://tldr.cam
+    id: b5cd55cf_tldrcam
+    description: This is my default url shortener, which I use for tldr.cam links.
+    icon: hl-kutt
+    tags:
+    - mode:detect
+    - host:warrig
+  icon: fas fa-link
+- name: Admin & Infra
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: BunkerWeb
+    url: https://bunkerweb.coder.cam
+    id: 1aaad95f_bunkerwebcodercam
+    description: Web application firewall and reverse proxy admin UI
+    icon: hl-bunkerweb
+    tags:
+    - mode:block
+    - host:bw-ui
+  - title: Grafana
+    url: https://grafana.coder.cam
+    id: d276c7d7_grafanacodercam
+    description: What kind of SRE would I be if I didn't have some monitoring in my lab.
+    icon: si-grafana
+    tags:
+    - mode:detect
+    - host:citadel
+  - title: Portainer
+    url: https://portainer.shadeking.cam
+    id: ce268fd1_portainershadekingca
+    description: >-
+      As previously mentioned, I utilize Portainer as the administrative interface for the majority of my services.
+    icon: si-portainer
+    tags:
+    - mode:block
+    - host:wellerman
+  - title: Windmill
+    url: https://windmill.shadeking.cam
+    id: 58b7f5ea_windmillshadekingcam
+    description: I honestly don't know why I don't hear about this app more often.
+    icon: fas fa-robot
+    tags:
+    - mode:detect
+    - host:citadel
+  icon: fas fa-cogs
+- name: Privacy & Security
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: ntfy
+    url: https://ntfy.coder.cam
+    id: e8acea42_ntfycodercam
+    description: >-
+      I use this to programmatically send notifications to various devices including my phone, and also to perform actions
+      on those devices when they receive certain actions.
+    icon: hl-ntfy
+    tags:
+    - mode:block
+    - host:black-pearl
+  - title: Vaultwarden
+    url: https://vault.coder.cam
+    id: dee76ad4_vaultcodercam
+    description: Bitwarden-compatible password manager (primary for website logins)
+    icon: si-bitwarden
+    tags:
+    - mode:detect
+    - host:billy-of-tea
+  icon: fas fa-shield-halved
+- name: Other Lab
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: true
+  items:
+  - title: Blaze
+    url: https://blaze.coder.cam
+    id: 237380c2_blazecodercam
+    description: Local file sharing over WebRTC
+    icon: fas fa-fire
+    tags:
+    - mode:block
+    - host:warrig
+  - title: Change Detection
+    url: https://changedetection.coder.cam
+    id: 92711c42_changedetectioncoder
+    description: Watch web pages for changes and alert on them
+    icon: fas fa-binoculars
+    tags:
+    - mode:block
+    - host:citadel
+  - title: Gastown
+    url: https://gastown.shadeking.cam
+    id: 94c254c8_gastownshadekingcam
+    description: Synology NAS web UI (DSM)
+    icon: fas fa-gas-pump
+    tags:
+    - mode:block
+    - host:gastown
+  - title: Open WebUI
+    url: https://gpt.shadeking.cam
+    id: 0fe40953_gptshadekingcam
+    description: This is my default interface for AI.
+    icon: fas fa-brain
+    tags:
+    - mode:detect
+    - host:warrig
+  - title: Speedtest
+    url: https://speedtest.shadeking.cam
+    id: 47002402_speedtestshadekingca
+    description: Self-hosted speedtest server
+    icon: fas fa-tachometer-alt
+    statusCheck: false
+    tags:
+    - mode:block
+    - host:warrig
+  - title: SurrealDB
+    url: https://surreal.coder.cam
+    id: 72ecf4ec_surrealcodercam
+    description: >-
+      I use SurrealDB to play around with linked data. I don't have many very formal uses for it yet, but I am storing some
+      embeddings for some RAG applications I'm tinkering with.
+    icon: fas fa-database
+    tags:
+    - mode:detect
+    - host:warrig
+  - title: WishThis
+    url: https://wishlist.coder.cam
+    id: 4f1d3c56_wishlistcodercam
+    description: >-
+      This is my default wishlist service, which I use to break out of the amazon monopoly.
+    icon: fas fa-gift
+    tags:
+    - mode:block
+    - host:wellerman
+  - title: Citadel
+    url: https://citadel.shadeking.cam
+    tags:
+    - mode:block
+    - host:bw-ui
+    id: f5bd6f9a_citadelshadekingcam
+  - title: Meilisearch
+    url: https://meilisearch.coder.cam
+    tags:
+    - mode:block
+    - host:warrig
+    id: f1b83ef7_meilisearchcodercam
+  - title: Pdf
+    url: https://pdf.coder.cam
+    tags:
+    - mode:block
+    - host:warrig
+    id: 07716ebd_pdfcodercam
+  - title: Immich
+    url: https://immich.coder.cam
+    tags:
+    - mode:block
+    - host:warrig
+    id: e834ae6a_immichcodercam
+  - title: Babybuddy
+    url: https://babybuddy.coder.cam
+    tags:
+    - mode:block
+    - host:warrig
+    id: aeef38b3_babybuddycodercam
+  - title: Tw
+    url: https://tw.coder.cam
+    tags:
+    - mode:block
+    - host:citadel
+    id: 6d806220_twcodercam
+  - title: Ansible
+    url: https://ansible.coder.cam
+    tags:
+    - mode:block
+    - host:warrig
+    id: 3ccdf0d6_ansiblecodercam
+  icon: fas fa-flask
+- name: XKCD
+  displayData:
+    sortBy: default
+    rows: 1
+    cols: 1
+    collapsed: false
+    hideForGuests: false
+  items: []
+  icon: fab fa-xkcd
+  widgets:
+  - type: xkcd-comic
+    options:
+      comic: random
+    id: 0_298_xkcdcomic
