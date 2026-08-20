@@ -1,0 +1,18 @@
+version: '3.7'
+
+services:
+  apprise:
+    build: .
+    container_name: apprise
+    ports:
+      - 8998:8000
+    user: "www-data:www-data"
+    restart: always
+    volumes:
+      - ./apprise_api:/opt/apprise/webapp:ro
+      # if uncommenting the below, you will need to type the following
+      # otherwise the django instance won't have permissions to write
+      # to the directory correctly:
+      #   $> chown -R 33:33 ./config
+      #   $> chmod -R 775 ./config
+      # - ./config:/config:rw

@@ -1,0 +1,40 @@
+services:
+  whisperlivekit:
+    build:
+      context: ./build
+      dockerfile: Dockerfile
+      args:
+        EXTRAS: "cu129,parakeet"
+    image: wlk:gpu
+    container_name: whisperlivekit
+    restart: unless-stopped
+    ports:
+      - "8069:8000"
+    volumes:
+      - hf-cache:/root/.cache/huggingface/hub
+      - ./transcripts:/app/transcripts
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - SB_URL=${SB_URL:-}
+      - SB_AUTH_TOKEN=${SB_AUTH_TOKEN:-}
+      - SB_TARGET_FOLDER=${SB_TARGET_FOLDER:-Inbox}
+      - SB_DEFAULT_TAGS=${SB_DEFAULT_TAGS:-transcript}
+      - SB_TITLE_TEMPLATE=${SB_TITLE_TEMPLATE:-{title} - {date}}
+    # ENTRYPOINT in Dockerfile is: wlk --host 0.0.0.0
+    # command here overrides CMD only, appended to entrypoint
+    command: >-
+      --backend parakeet
+      --language en
+      --port 8000
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  hf-cache:
+    name: whisperlivekit-hf-cache

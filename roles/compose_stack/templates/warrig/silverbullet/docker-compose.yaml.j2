@@ -1,0 +1,137 @@
+services:
+  silverbullet:
+    # CURRENT STATE (2026-08-12): running the moving `v2-runtime-api` tag, and
+    # it is healthy. Resolves to sha256:747dbcce10dfd15a0663c4f192a161388793bc
+    # 377016bc0b1f36fe15a1da16f7 (built 2026-08-09).
+    #
+    # History: this was pinned to 2.9.0-runtime-api because `v2-runtime-api`
+    # had rolled to a 2026-07-01 build (2.9.0-45) whose headless-Chrome runtime
+    # was broken (CDP `enable runtime` timed out / the headless client's API
+    # fetches failed auth), so the runtime never became ready and `sb lua`
+    # 503'd. Upstream has since fixed that; the moving tag works again, so the
+    # pin was lifted and the old warn-off comment no longer applies.
+    #
+    # Caveat that still applies to either tag: first launch on a cold
+    # /space/.chrome-data can time out while it indexes the space (60s cap);
+    # just `docker compose restart silverbullet` once the profile has warmed.
+    # Stale Chrome SingletonLocks are auto-removed on boot.
+    #
+    # TRADE-OFF: a moving tag means the next `docker compose pull` can silently
+    # re-break the runtime the same way. Re-pin to the digest above if you want
+    # that to stop being possible.
+    # image: ghcr.io/silverbulletmd/silverbullet:2.9.0-runtime-api
+    image: ghcr.io/silverbulletmd/silverbullet:v2-runtime-api
+    restart: unless-stopped
+    shm_size: '512m'
+    # entrypoint: ["/sbin/tini", "--", "/entrypoint-wrapper.sh"]
+    environment:
+    - SB_USER={{ silverbullet_sb_user }}
+    - SB_AUTH_TOKEN={{ silverbullet_sb_auth_token }}
+    volumes:
+      - ./space:/space
+      # - ./entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
+    ports:
+      - 6934:3000
+
+  # ---------------------------------------------------------------------
+  # Fast Search backend — consolidated into this stack (was its own compose
+  # under ~/git/home/silverbullet-fast-search). All three services now share
+  # this project's default network, so the sidecar reaches Meilisearch by
+  # service name and the sidecar reads the SB space straight off disk instead
+  # of pulling over HTTP. No more static IP / external-network bridge.
+  # ---------------------------------------------------------------------
+  meilisearch:
+    image: getmeili/meilisearch:v1.21
+    restart: unless-stopped
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      - MEILI_ENV=production
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_HTTP_ADDR=0.0.0.0:7700
+    volumes:
+      - ./meili_data:/meili_data
+    # 7701 published on all host interfaces so the BunkerWeb reverse proxy on
+    # Citadel can reach it as warrig:7701 and serve https://search.bullet.coder.cam.
+    # Loopback (127.0.0.1:7701) still works for local runbook/curl. Every route
+    # except /health is API-key gated (MEILI_ENV=production); only the
+    # search-only key is used client-side, the master key stays on the internal
+    # docker network (sidecar -> meilisearch:7700).
+    ports:
+      - "7701:7700"
+    # Embedder calls Ollama on the host (nomic-embed-text). host.docker.internal
+    # resolves to the docker0 gateway; Ollama listens on 11434 on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  sidecar:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    restart: unless-stopped
+    depends_on:
+      - silverbullet
+      - meilisearch
+    environment:
+      - MEILI_URL=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      # Filesystem mode: read pages straight off the bind-mounted space/ dir.
+      # The poll loop becomes a filesystem mtime scan (SIDECAR_POLL_INTERVAL).
+      - SIDECAR_SPACE_DIR=/space
+      - SIDECAR_POLL_INTERVAL=15
+      - SIDECAR_INDEX_NAME=silverbullet
+      - SIDECAR_EXCLUDE_PREFIXES=_attachments/,Library/Std/,.chrome-data/
+      # Secondary corpus: Cam's blog (Quartz markdown), indexed by reindex-blog.
+      - SIDECAR_BLOG_DIR=/blog
+      - SIDECAR_BLOG_INDEX_NAME=blog
+      # HTTP fallback creds — only used if SIDECAR_SPACE_DIR is ever unset.
+      - SB_URL=${SB_URL}
+      - SB_AUTH_TOKEN=${SB_AUTH_TOKEN}
+      - SB_USER=${SB_USER}
+    volumes:
+      # The SB space, read-only — this is what enables filesystem mode.
+      - ./space:/space:ro
+      # Sidecar code now lives in this directory (copied out of git/home).
+      - ./sidecar:/sidecar:ro
+      # Blog content tree (separate repo, left in place).
+      - /home/nux/git_local/cam-barts.github.io/content:/blog:ro
+    working_dir: /sidecar
+    # uv run handles PEP 723 inline metadata; deps install on first run.
+    command: ["uv", "run", "--no-project", "/sidecar/indexer.py", "serve"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ---------------------------------------------------------------------
+  # PDF report renderer. Unlike the other services this one has a Dockerfile:
+  # it bakes in the whole pandoc + lualatex + Eisvogel + fonts toolchain so the
+  # host can drop TeX Live. SilverBullet triggers it via net.proxyFetch to
+  # http://pdf-sidecar:8000/render; it reads the bind-mounted space, renders a
+  # branded PDF, and writes <Page>.pdf next to the source (RW mount). See
+  # ./pdf-sidecar/ and space/Library/Personal/PDF Report.md.
+  # ---------------------------------------------------------------------
+  pdf-sidecar:
+    build: ./pdf-sidecar
+    restart: unless-stopped
+    depends_on:
+      - silverbullet
+    environment:
+      - SPACE_DIR=/space
+      - EISVOGEL_TEMPLATE=eisvogel
+      - DEFAULT_THEME=observatory
+      # Cap that drops pathological full-page scroll-captures. Legit before/after
+      # comparison screenshots run ~2500-6300px tall, so 8000 keeps them while still
+      # catching runaway captures.
+      - MAX_IMAGE_HEIGHT_PX=8000
+      - PORT=8000
+      # /render requires Authorization: Bearer <this> (endpoint is public via BunkerWeb
+      # at https://pdf.coder.cam). Token lives in .env.
+      - RENDER_TOKEN=${RENDER_TOKEN}
+    volumes:
+      # RW: the renderer writes the generated PDF back into the space.
+      - ./space:/space
+      # Code mounted for quick iteration; the image also COPYs it in.
+      - ./pdf-sidecar:/app:ro
+      # host zone file (Alpine lacks tzdata); with TZ unset, musl reads this so the
+      # default report date ("today") matches Cam's local day, not UTC
+      - /etc/localtime:/etc/localtime:ro
+    # Published for net.proxyFetch fallback + local curl testing; in-network the
+    # SB container reaches it as pdf-sidecar:8000 without this.
+    ports:
+      - "8391:8000"

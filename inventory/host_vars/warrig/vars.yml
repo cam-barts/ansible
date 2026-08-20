@@ -183,3 +183,132 @@ borgmatic_excludes:
 # is how a 10-minute before-hook stall lands on top of citadel's 03:00 window.
 # The role's default is already [], so there is nothing to set here; see
 # "warrig has none, deliberately" in roles/borgmatic/README.md.
+
+# --- compose stack tracking (roles/compose_stack) -------------------------
+# Byte-faithful catalog of this host's running compose stacks. Generated from
+# live captures 2026-08-19; secret values live in vault.yml alongside.
+compose_stack_root: /home/nux/docker_services
+compose_stacks:
+  ansible-semaphore:
+    files:
+      - { src: warrig/ansible-semaphore/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  atuin:
+    files:
+      - { src: warrig/atuin/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/atuin/.env.j2, dest: .env, mode: "0640" }
+  babybuddy:
+    files:
+      - { src: warrig/babybuddy/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  bin:
+    files:
+      - { src: warrig/bin/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+  blaze:
+    files:
+      - { src: warrig/blaze/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  cyberchef:
+    files:
+      - { src: warrig/cyberchef/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  dashy:
+    files:
+      - { src: warrig/dashy/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+  excalidraw:
+    files:
+      - { src: warrig/excalidraw/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  flatnotes:
+    files:
+      - { src: warrig/flatnotes/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  hoarder:
+    files:
+      - { src: warrig/hoarder/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+      - { src: warrig/hoarder/.env.j2, dest: .env, mode: "0640" }
+  hoppscotch:
+    files:
+      - { src: warrig/hoppscotch/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+      - { src: warrig/hoppscotch/.env.j2, dest: .env, mode: "0640" }
+  immich:
+    files:
+      - { src: warrig/immich/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/immich/.env.j2, dest: .env, mode: "0600" }
+  jellyfin:
+    files:
+      - { src: warrig/jellyfin/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  kutt:
+    files:
+      - { src: warrig/kutt/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  metube:
+    files:
+      - { src: warrig/metube/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  morss:
+    files:
+      - { src: warrig/morss/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  ollama-gpt:
+    files:
+      - { src: warrig/ollama-gpt/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  pinchflat:
+    files:
+      - { src: warrig/pinchflat/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  plausible:
+    files:
+      - { src: warrig/plausible/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+      - { src: warrig/plausible/plausible-conf.env.j2, dest: plausible-conf.env, mode: "0640" }
+  portainer_agent:
+    files:
+      - { src: warrig/portainer_agent/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+  pwndrop:
+    files:
+      - { src: warrig/pwndrop/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  silverbullet:
+    files:
+      - { src: warrig/silverbullet/docker-compose.yaml.j2, dest: docker-compose.yaml, mode: "0640" }
+      - { src: warrig/silverbullet/.env.j2, dest: .env, mode: "0640" }
+  speedtest:
+    files:
+      - { src: warrig/speedtest/docker-compose.yml, dest: docker-compose.yml, mode: "0755" }
+      - { src: warrig/speedtest/.env.j2, dest: .env, mode: "0640" }
+  string-is:
+    files:
+      - { src: warrig/string-is/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  surrealdb:
+    files:
+      - { src: warrig/surrealdb/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  webhooksite:
+    dir: /home/nux/docker_services/webhook/webhook.site
+    files:
+      - { src: warrig/webhooksite/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  whisperlivekit:
+    files:
+      - { src: warrig/whisperlivekit/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+      - { src: warrig/whisperlivekit/.env.j2, dest: .env, mode: "0640" }
+
+# Secret passthroughs for compose_stack templates; values live in vault.yml.
+ansible_semaphore_access_key_encryption: "{{ vault_ansible_semaphore_access_key_encryption }}"
+ansible_semaphore_admin_password: "{{ vault_ansible_semaphore_admin_password }}"
+ansible_semaphore_db_pass: "{{ vault_ansible_semaphore_db_pass }}"
+ansible_semaphore_postgres_password: "{{ vault_ansible_semaphore_postgres_password }}"
+atuin_db_password: "{{ vault_atuin_db_password }}"
+flatnotes_password: "{{ vault_flatnotes_password }}"
+flatnotes_secret_key: "{{ vault_flatnotes_secret_key }}"
+hoarder_meili_master_key: "{{ vault_hoarder_meili_master_key }}"
+hoarder_nextauth_secret: "{{ vault_hoarder_nextauth_secret }}"
+hoarder_openai_api_key: "{{ vault_hoarder_openai_api_key }}"
+hoppscotch_data_encryption_key: "{{ vault_hoppscotch_data_encryption_key }}"
+hoppscotch_database_url: "{{ vault_hoppscotch_database_url }}"
+hoppscotch_github_client_secret: "{{ vault_hoppscotch_github_client_secret }}"
+hoppscotch_jwt_secret: "{{ vault_hoppscotch_jwt_secret }}"
+hoppscotch_mailer_smtp_url: "{{ vault_hoppscotch_mailer_smtp_url }}"
+hoppscotch_postgres_password: "{{ vault_hoppscotch_postgres_password }}"
+hoppscotch_session_secret: "{{ vault_hoppscotch_session_secret }}"
+immich_db_password: "{{ vault_immich_db_password }}"
+kutt_jwt_secret: "{{ vault_kutt_jwt_secret }}"
+ollama_gpt_karakeep_api_key: "{{ vault_ollama_gpt_karakeep_api_key }}"
+ollama_gpt_obsidian_api_key: "{{ vault_ollama_gpt_obsidian_api_key }}"
+plausible_postgres_password: "{{ vault_plausible_postgres_password }}"
+plausible_secret_key_base: "{{ vault_plausible_secret_key_base }}"
+pwndrop_secret_path: "{{ vault_pwndrop_secret_path }}"
+silverbullet_meili_master_key: "{{ vault_silverbullet_meili_master_key }}"
+silverbullet_render_token: "{{ vault_silverbullet_render_token }}"
+silverbullet_sb_auth_token: "{{ vault_silverbullet_sb_auth_token }}"
+silverbullet_sb_user: "{{ vault_silverbullet_sb_user }}"
+speedtest_app_key: "{{ vault_speedtest_app_key }}"
+surrealdb_password: "{{ vault_surrealdb_password }}"
+whisperlivekit_sb_auth_token: "{{ vault_whisperlivekit_sb_auth_token }}"

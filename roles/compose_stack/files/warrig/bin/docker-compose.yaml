@@ -1,0 +1,21 @@
+version: '3.3'
+services:
+  pastebin:
+    image: wantguns/bin
+    container_name: pastebin
+    restart: always
+    user: 1000:1000
+    ports:
+      - 6163:6163
+    # network_mode: "host"
+    environment:
+      - BIN_PORT=6163 # Defaults to 6162
+      - BIN_LIMITS={form="16 MiB"}
+    # healthcheck:
+    #   test: curl --fail https://bin.coder.cam
+    #   interval: 60s
+    #   retries: 3
+    #   start_period: 60s
+    #   timeout: 10s
+    volumes:
+      - ./upload:/upload  # upload folder will have your pastes

@@ -9,3 +9,11 @@
 # Moved again when citadel's host_vars became a directory to carry a vault.yml
 # alongside (bunkerweb_stack secrets).
 inventory/host_vars/citadel/vars.yml yaml[line-length]
+
+# roles/compose_stack sources are byte-faithful captures of live compose
+# files; reformatting any of them would break the cmp reconciliation against
+# the running host. Style loses to fidelity here, same doctrine as the
+# bunkerweb template.
+roles/compose_stack/files/warrig/immich/docker-compose.yml yaml[line-length]
+roles/compose_stack/files/warrig/metube/docker-compose.yml yaml[line-length]
+roles/compose_stack/files/warrig/webhooksite/docker-compose.yml yaml[indentation]

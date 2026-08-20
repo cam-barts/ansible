@@ -1,0 +1,81 @@
+# Pinned so the source address Semaphore connects FROM is stable. Docker hands
+# out these blocks in creation order, so an unpinned subnet drifts whenever
+# stacks are added or removed, which would silently break any sshd
+# "Match Address" rule that trusts it (see warrig's /etc/ssh/sshd_config).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.16.90.0/24
+
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:18
+    volumes:
+      # PG18 moved PGDATA to /var/lib/postgresql/18/docker and declares its
+      # volume at /var/lib/postgresql. Mount the PARENT, not .../data - mounting
+      # the old path here makes PG initdb into an unmounted dir, i.e. a database
+      # that silently disappears on the next recreate.
+      - ./semaphore-postgres18:/var/lib/postgresql
+    environment:
+      POSTGRES_USER: semaphore
+      POSTGRES_PASSWORD: {{ ansible_semaphore_postgres_password }}
+      POSTGRES_DB: semaphore
+    # SIGTERM is a "smart" shutdown that waits for clients, so compose SIGKILLs it
+    # at the 10s timeout and the next boot does crash recovery. SIGINT = fast
+    # shutdown, which exits clean and keeps startup short.
+    stop_signal: SIGINT
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U semaphore -d semaphore"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+  semaphore:
+    restart: unless-stopped
+    ports:
+       - 2783:3000
+    # PINNED. Never use :latest here, and never v2.19.6 - Semaphore's tags are
+    # non-monotonic and v2.19.6 migrates the schema to 2.20.1, which no shipping
+    # release can read (github.com/semaphoreui/semaphore/issues/4125).
+    image: semaphoreui/semaphore:v2.19.8
+    volumes:
+      # config.json lives here. Without this mount a container recreate makes
+      # Semaphore regenerate access_key_encryption and every stored SSH key /
+      # vault password becomes undecryptable. Top cause of data loss upstream.
+      - ./semaphore-config:/etc/semaphore
+      # Scratch (repo clones, galaxy collections), but also the trust-on-first-use
+      # known_hosts. ansible.cfg uses StrictHostKeyChecking=accept-new, so without
+      # this the fleet gets re-trusted from scratch after every recreate.
+      - ./semaphore-tmp:/tmp/semaphore
+      # Semaphore's own bootstrap playbooks, cloned via file:// as a repository.
+      # Kept separate from ~/git_local/ansible on purpose: that repo is managed
+      # elsewhere and this stack should not depend on its state.
+      - ./semaphore-playbooks:/opt/semaphore-playbooks:ro
+      # safe.directory for ./semaphore-playbooks, which is bind-mounted and
+      # owned by nux (1000) while git runs as 1001. Must be SYSTEM config:
+      # Semaphore scrubs the environment when it shells out to git, so
+      # GIT_CONFIG_GLOBAL never reaches it.
+      - ./semaphore-config/gitconfig:/etc/gitconfig:ro
+    environment:
+      SEMAPHORE_DB_USER: semaphore
+      SEMAPHORE_DB_PASS: {{ ansible_semaphore_db_pass }}
+      SEMAPHORE_DB_HOST: postgres
+      SEMAPHORE_DB_PORT: 5432
+      SEMAPHORE_DB_DIALECT: postgres
+      SEMAPHORE_DB: semaphore
+      SEMAPHORE_ADMIN_PASSWORD: {{ ansible_semaphore_admin_password }}
+      SEMAPHORE_ADMIN_NAME: cam
+      SEMAPHORE_ADMIN_EMAIL: cam@shadeking.cam
+      SEMAPHORE_ADMIN: cam
+      # Irreplaceable. Backed up at ~/backups/semaphore-2026-08-17/SECRETS.env.
+      # This env var overrides config.json, so it is what actually protects the key store.
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: {{ ansible_semaphore_access_key_encryption }}
+    # Without the health gate Semaphore connects before Postgres finishes recovery
+    # and panics ("pq: the database system is starting up"). It restart-loops for
+    # minutes, which reads exactly like a corrupt database. It is not one.
+    depends_on:
+      postgres:
+        condition: service_healthy

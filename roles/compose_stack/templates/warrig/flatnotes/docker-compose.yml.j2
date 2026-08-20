@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  flatnotes:
+    container_name: flatnotes
+    image: dullage/flatnotes:latest
+    environment:
+      PUID: 1000
+      PGID: 1000
+      FLATNOTES_AUTH_TYPE: "password"
+      FLATNOTES_USERNAME: "cam"
+      FLATNOTES_PASSWORD: "{{ flatnotes_password }}"
+      FLATNOTES_SECRET_KEY: "{{ flatnotes_secret_key }}"
+    volumes:
+      - "/home/nux/Obsidian Vaults/Nux/Resources/Outputs/Flatnotes:/data"
+      # Optional. Allows you to save the search index in a different location:
+      # - "./index:/data/.flatnotes"
+    ports:
+      - "7231:8080"
+    restart: unless-stopped

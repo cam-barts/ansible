@@ -1,0 +1,15 @@
+---
+# Tracks warrig's metube compose stack byte-faithfully and reconciles its
+# containers to them: up -d by default, -e compose_stack_state=absent to
+# bring it down. Doctrine: roles/compose_stack/README.md.
+#   ansible-playbook --check --diff playbooks/configure_compose_metube.yml
+- name: Track the metube compose stack
+  hosts: warrig
+  gather_facts: false
+  # The VARIABLE, not the become keyword: a play-level `become:` loses to
+  # the ansible_become host_var (repo README precedence trap).
+  vars:
+    ansible_become: false
+    compose_stack_name: metube
+  roles:
+    - compose_stack

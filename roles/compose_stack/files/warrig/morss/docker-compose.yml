@@ -1,0 +1,8 @@
+version: '2.1'
+
+services:
+    app:
+        build: .
+        ports:
+            - '7987:8000'
+        restart: unless-stopped

@@ -1,0 +1,7 @@
+version: '3.3'
+services:
+    string-is:
+        ports:
+            - '4357:3000'
+        image: 'daveperrett/string-is:latest'
+        restart: always

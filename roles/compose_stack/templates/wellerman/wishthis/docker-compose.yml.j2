@@ -1,0 +1,27 @@
+version: '3.7'
+
+services:
+  wishthis:
+    container_name: wishthis
+    restart: unless-stopped
+    build: .
+    environment:
+      - VIRTUAL_HOST=wishlist.coder.cam
+      - TZ=America/New_York
+    ports:
+      - 3232:80
+    volumes:
+      - ./config.php:/var/www/html/src/config/config.php
+
+  db:
+    restart: unless-stopped
+    image: ghcr.io/yobasystems/alpine-mariadb:10.11.8-11
+    environment:
+      MARIADB_ROOT_PASSWORD: {{ wishthis_mariadb_root_password }}
+      MARIADB_DATABASE: wishthis
+      MARIADB_USER: wishthis
+      MARIADB_PASSWORD: {{ wishthis_mariadb_password }}
+    volumes:
+      - ./data:/var/lib/mysql
+    # ports:
+    #  - 3306:3306

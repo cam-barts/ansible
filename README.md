@@ -13,7 +13,7 @@ dotfiles handles per-user shell and editor setup.
 ```
 playbooks/   one entry-point per task (configure_*, deploy_*, upgrade_*)
 roles/       reusable units called by the playbooks
-inventory/   one inventory file per playbook, plus group_vars/host_vars
+inventory/   the one canonical inventory (hosts), plus group_vars/host_vars
 ```
 
 `ansible.cfg` pins `roles_path = ./roles` and
@@ -42,13 +42,13 @@ non-builtin collections the roles depend on (Docker container management,
 | `configure_ufw.yml` | Raspberry Pis | Default deny in / allow out, rate-limited SSH, full access from the workstation, node_exporter from citadel. |
 | `configure_firewalld.yml` | warrig + citadel | Firewalld rule model: SSH, plus rich rules scoping warrig's node_exporter (9100) and cAdvisor (8080) to citadel. Reconciled against the live rulesets on both hosts and applied 2026-08-17, so it should now report zero changes. Additive only; it never removes a rule. See `roles/firewalld/README.md`. |
 | `configure_docker_log_rotation.yml` | Raspberry Pis (any host via `-e docker_daemon_target=`) | Manages the full `/etc/docker/daemon.json` per host: json-file 10 MB × 3 on the Pis, the loki-driver configs on warrig/citadel via their host_vars. Never restarts Docker on its own (`docker_daemon_allow_restart` defaults to `false`); it warns instead. |
+| `configure_compose_<stack>.yml` (×37) | the host(s) running that stack | One per compose stack in the lab (40 stacks; portainer and portainer_agent playbooks span hosts). Byte-faithfully restores the stack's compose/env files with vaulted secrets, then reconciles the containers to them: `up -d` by default (a down or wiped stack comes back), `-e compose_stack_state=absent` brings it down, `stopped`/`restarted` also work. Converged stacks report zero changes. See `roles/compose_stack/README.md`. |
 | `deploy_cadvisor.yml` | `[cadvisor]` (Pis; warrig/citadel foldable via host_vars) | Deploys cAdvisor as a Docker container for per-container CPU/memory metrics, scraped by Prometheus on citadel. Guards against the loki-driver container-recreate deadlock on warrig/citadel. See `roles/cadvisor/README.md`. |
 | `deploy_promtail.yml` | `[promtail]` (Pis) | Deploys Promtail as a Docker container shipping container logs plus host syslog/auth/kernel/dpkg logs to Loki on citadel. See `roles/promtail/README.md`. |
 | `deploy_ntfy_server.yml` | black-pearl | Deploys ntfy as a Docker container. Every alert in the lab (borgmatic, rsnapshot, dsm_config_audit, and the rest) flows through it. See `roles/ntfy_server/README.md`. |
 | `configure_ntfy_client.yml` | all hosts | Renders `/etc/ntfy/client.yml` so every host's `ntfy` CLI points at the self-hosted server instead of silently defaulting to the public `ntfy.sh`. See `roles/ntfy_client/README.md`. |
 | `configure_borgmatic_warrig.yml` | warrig + gastown | warrig's counterpart to `configure_borgmatic_citadel.yml`: installs borgmatic, renders config + hook scripts (adopting a previously hand-managed `/etc/borgmatic/config.yaml`), generates an SSH key, authorizes it on gastown, and schedules the daily 04:00 push. First run must be `--check --diff`. See `roles/borgmatic/README.md`. |
 | `configure_dsm_config_audit.yml` | gastown (Synology) | Drops a read-only DSM config-drift export script in `nux`'s home and pins the Windmill runner's SSH key to it with a forced `command=`, so a nightly Windmill flow can snapshot config-drift surfaces. See `roles/dsm_config_audit/README.md`. |
-| `prune_docker.yml` | Raspberry Pis | One-shot `docker system prune` covering containers, non-dangling images, networks, volumes, and builder cache. |
 | `update_docker_images.yml` | warrig + citadel + the three Pis (any subset via `-e docker_update_target=`) | **DESTRUCTIVE.** One-shot `watchtower --run-once` to pull newer digests for every running container's current tag and recreate what moved, then `docker system prune -af`. Runs unescalated as the `docker`-group user; no become key needed. gastown is excluded and must stay excluded (no `docker` on PATH, no socket). Read the header comment before running it: 71 of the 90 containers in scope are loki-logged, and Semaphore itself is one of them. |
 | `upgrade_raspberrypi.yml` | Raspberry Pis | Serial Debian point-release upgrade: backs up state, rewrites apt sources to the next release, runs the upgrade, makes sure networking comes back, reboots, and verifies. Driven by a `release_map` in `roles/dist_upgrade/vars/`. |
 | `configure_pwnbox.yml` | localhost | PwnBox bootstrap: installs the `package_list` from `common`, then clones dotfiles, stows them, and installs Starship + Atuin. |
@@ -91,13 +91,8 @@ Two playbooks deliberately have **no** template, and should not be given one:
 - `upgrade_raspberrypi.yml`. A fleet-wide distro upgrade wants a human
   watching for prompts, not a button. Run it from a shell.
 
-`prune_docker.yml` does have one, marked DESTRUCTIVE, with an acknowledgement
-box. Note that box is friction, not enforcement: Semaphore requires a
-non-empty value but does not validate it, and the playbook ignores the
-variable entirely.
-
-`update_docker_images.yml` also has one, also marked DESTRUCTIVE, with the same
-kind of acknowledgement box and the same caveat about it being friction rather
+`update_docker_images.yml` does have one, marked DESTRUCTIVE, with an
+acknowledgement box and the caveat that the box is friction rather
 than enforcement. It is the one template whose blast radius is decided by
 something other than this repo: Watchtower picks what to recreate, so what a
 run does depends on what registries have published since the last one. Its

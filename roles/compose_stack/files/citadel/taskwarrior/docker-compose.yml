@@ -1,0 +1,17 @@
+services:
+  taskchampion-sync-server:
+    image: ghcr.io/gothenburgbitfactory/taskchampion-sync-server:0.7.1
+    container_name: taskchampion-sync-server
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      LISTEN: 0.0.0.0:9922
+      DATA_DIR: /var/lib/taskchampion-sync-server/data
+      CREATE_CLIENTS: "false"          # see below — do not leave this at default
+      CLIENT_ID: "[REDACTED-VAULTED]"
+    volumes:
+      - ./data/taskchampion:/var/lib/taskchampion-sync-server/data
+    expose:
+      - "9922"
+    ports:
+      - 9922:9922

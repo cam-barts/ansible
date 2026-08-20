@@ -1,0 +1,45 @@
+services:
+  changedetection:
+    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    restart: unless-stopped
+    volumes:
+      - ./data:/datastore
+    environment:
+      - PLAYWRIGHT_DRIVER_URL=ws://sockpuppetbrowser:3000
+      - BASE_URL=https://changedetection.coder.cam
+      - FETCH_WORKERS=3
+      - MINIMUM_SECONDS_RECHECK_TIME=60
+    ports:
+      - 5000:5000
+    depends_on:
+      sockpuppetbrowser:
+        condition: service_started
+
+  sockpuppetbrowser:
+    image: dgtlmoon/sockpuppetbrowser:latest
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - SCREEN_WIDTH=1920
+      - SCREEN_HEIGHT=1080
+      - MAX_CONCURRENT_CHROME_PROCESSES=5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://citadel.shadeking.cam.local:3100/loki/api/v1/push"
+        mode: "non-blocking"
+        loki-retries: "2"
+        loki-batch-size: "5000"
+        loki-max-backoff: "800ms"
+        loki-timeout: "3s"
+        keep-file: "true"
+        loki-pipeline-stages: |
+          - drop:
+              expression: ".*Failed to connect to the bus.*"
+          - drop:
+              expression: ".*_request_retry.*"

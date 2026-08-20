@@ -1,0 +1,33 @@
+version: "3"
+services:
+  metube:
+    image: ghcr.io/alexta69/metube
+    container_name: metube
+    restart: unless-stopped
+    environment:
+      TEMP_DIR: "/tmp"
+      # User-Agent must match curl_cffi's newest impersonation target (Chrome-136).
+      # yt-dlp 2026.07.04 defaults to a Chrome/146 UA while impersonating Chrome-136
+      # at the TLS layer; TikTok's Akamai WAF blocks that mismatch with a 537-byte
+      # "Site Maintenance" page. Bump this when curl_cffi gains newer targets
+      # (check: docker exec metube yt-dlp --list-impersonate-targets).
+      YTDL_OPTIONS: '{"writesubtitles":true,"subtitleslangs":["en","-live_chat"],"updatetime":false,"sleep_interval":3,"max_sleep_interval":8,"sleep_interval_requests":1.5,"ratelimit":3145728,"http_headers":{"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"},"postprocessors":[{"key":"Exec","exec_cmd":"chmod 0664","when":"after_move"},{"key":"FFmpegEmbedSubtitle","already_have_subtitle":false},{"key":"FFmpegMetadata","add_chapters":true}]}'
+      # Select the "tiktok" preset when queueing TikTok URLs. TikTok's bytevc1
+      # (HEVC) variants are often genuinely video-only while --list-formats still
+      # advertises acodec=aac, so yt-dlp picks the highest-bitrate one and lands
+      # on a silent file with no error (140 of one 818-video pull, 2026-08-18).
+      # An acodec-based selector can't help - it trusts the same false metadata -
+      # and MeTube's own h264 codec dropdown can't either, because its selector is
+      # merge-based and TikTok exposes no separate audio format, so every branch
+      # falls through to bare `best`. Only a vcodec filter on a progressive
+      # format works. Costs resolution: h264 tops out at 540p vs 1080p bytevc1.
+      YTDL_OPTIONS_PRESETS: '{"tiktok":{"format":"b[vcodec^=h264]/download/b"}}'
+      MAX_CONCURRENT_DOWNLOADS: 1
+      DELETE_FILE_ON_TRASHCAN: true
+      UID: 1000
+      GID: 1001
+    ports:
+      - "2989:8081"
+    volumes:
+      - /home/nux/Videos/metube:/downloads
+      - /tmp:/tmp

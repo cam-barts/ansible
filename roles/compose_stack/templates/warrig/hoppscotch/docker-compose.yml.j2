@@ -1,0 +1,21 @@
+version: "3"
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:14
+    volumes:
+      - ./hoppscotch-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: hoppscotch
+      POSTGRES_PASSWORD: {{ hoppscotch_postgres_password }}
+      POSTGRES_DB: hoppscotch
+  hoppscotch:
+    ports:
+      - 3000:3000
+      - 3100:3100
+      - 3170:8080
+    env_file:
+      - .env
+    restart: unless-stopped
+    image: hoppscotch/hoppscotch
+    # command: pnpx prisma migrate deploy

@@ -1,0 +1,27 @@
+---
+# Generic byte-faithful tracker for one running docker compose stack. The
+# playbook names the stack (compose_stack_name); the host's compose_stacks
+# dict (inventory/host_vars/<host>/vars.yml) supplies everything else.
+# compose_stack_name and compose_stacks have no defaults on purpose: an
+# undefined-variable failure is the correct outcome when a playbook targets a
+# host that doesn't carry the stack.
+
+# Resolved lazily at use time, so defining these here is safe even though the
+# inputs only exist once a playbook and host_vars are in play. Per-stack
+# entries only carry what deviates from convention:
+#   project -> the dict key (the stack name; NEVER the directory basename --
+#              webhooksite's dir is webhook/webhook.site, its project isn't)
+#   dir     -> {{ compose_stack_root }}/<name>  (root set once per host)
+#   owner/group -> the connecting user, who owns every stack dir in the lab
+compose_stack_def: "{{ compose_stacks[compose_stack_name] }}"
+compose_stack_project: "{{ compose_stack_def.project | default(compose_stack_name) }}"
+compose_stack_dir: "{{ compose_stack_def.dir | default(compose_stack_root ~ '/' ~ compose_stack_name) }}"
+compose_stack_owner: "{{ compose_stack_def.owner | default(ansible_user) }}"
+compose_stack_group: "{{ compose_stack_def.group | default(compose_stack_owner) }}"
+
+# Desired container state. The play writes the stack's files and then
+# reconciles the containers to them: present = `up -d` (a down or wiped
+# stack comes back), absent = `down` (containers and the project network
+# removed, volumes kept), stopped and restarted also valid. Override per run:
+#   ansible-playbook playbooks/configure_compose_<stack>.yml -e compose_stack_state=absent
+compose_stack_state: present

@@ -1,0 +1,13 @@
+services:
+  babybuddy:
+    image: lscr.io/linuxserver/babybuddy
+    container_name: babybuddy
+    volumes:
+      - ./data:/config
+    ports:
+      - 0.0.0.0:7733:8000
+    environment:
+      - TZ=America/New_York
+      - CSRF_TRUSTED_ORIGINS=https://babybuddy.coder.cam
+      - SECURE_PROXY_SSL_HEADER=True
+    restart: unless-stopped

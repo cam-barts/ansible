@@ -1,0 +1,18 @@
+---
+# Tracks citadel's windmill compose stack byte-faithfully and reconciles its containers
+# to them (up -d; -e compose_stack_state=absent brings it down). Doctrine: roles/compose_stack/README.md.
+#   ansible-playbook --check --diff playbooks/configure_compose_windmill.yml
+#
+# Secrets (the Postgres password and the garage-webui basic-auth hash) come
+# from inventory/host_vars/citadel/vault.yml; the template task sets
+# diff: false so --diff cannot print them.
+- name: Track the windmill compose stack
+  hosts: citadel
+  gather_facts: false
+  # The VARIABLE, not the become keyword: a play-level `become:` loses to
+  # the ansible_become host_var (repo README precedence trap).
+  vars:
+    ansible_become: false
+    compose_stack_name: windmill
+  roles:
+    - compose_stack

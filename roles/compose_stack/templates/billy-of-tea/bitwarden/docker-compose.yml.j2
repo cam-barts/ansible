@@ -1,0 +1,15 @@
+version: '3.3'
+services:
+    server:
+        container_name: vaultwarden
+        environment:
+            - YUBICO_CLIENT_ID=72753
+            - YUBICO_SECRET_KEY={{ bitwarden_yubico_secret_key }}
+            - ADMIN_TOKEN={{ bitwarden_admin_token }}
+        volumes:
+            - './vw-data/:/data/'
+        ports:
+            - '8899:80'
+        image: 'vaultwarden/server:latest'
+        restart: unless-stopped
+        user: 1000:1000

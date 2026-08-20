@@ -1,0 +1,64 @@
+---
+# This role manages a compose stack's FILES and its CONTAINER STATE: it
+# writes byte-faithful compose/env files, then reconciles the containers to
+# them (docker compose up -d by default, `down` via compose_stack_state).
+# A converged stack reports zero changes. See README.md.
+
+- name: Assert the stack is defined for this host
+  ansible.builtin.assert:
+    that:
+      - compose_stack_name in compose_stacks
+    fail_msg: >-
+      {{ inventory_hostname }} has no compose_stacks['{{ compose_stack_name }}']
+      entry. The stack catalog lives in this host's
+      inventory/host_vars/<host>/vars.yml.
+    quiet: true
+
+# diff: false so `ansible-playbook --diff` cannot print the rendered secrets.
+- name: Template the stack's secret-bearing files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ compose_stack_dir }}/{{ item.dest }}"
+    owner: "{{ compose_stack_owner }}"
+    group: "{{ compose_stack_group }}"
+    mode: "{{ item.mode }}"
+    backup: true
+  diff: false
+  loop: "{{ compose_stack_def.files | selectattr('src', 'search', '\\.j2$') | list }}"
+  loop_control:
+    label: "{{ item.dest }}"
+
+# Secret-free files ship verbatim: copy does no Jinja pass, so compose's
+# ${VAR} interpolation and any literal {{ }} survive by construction.
+- name: Copy the stack's verbatim files
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ compose_stack_dir }}/{{ item.dest }}"
+    owner: "{{ compose_stack_owner }}"
+    group: "{{ compose_stack_group }}"
+    mode: "{{ item.mode }}"
+    backup: true
+  loop: "{{ compose_stack_def.files | rejectattr('src', 'search', '\\.j2$') | list }}"
+  loop_control:
+    label: "{{ item.dest }}"
+
+# Runs AFTER the file tasks on purpose: compose needs .env and every
+# env_file present in the project dir to render its config.
+#
+# pull: missing is deliberate. windmill and surrealdb set
+# `pull_policy: always` in their compose files, which under the default
+# pull policy would turn every play run into an image upgrade; Watchtower
+# owns image upgrades in this lab, this role owns state. A newer image
+# Watchtower has ALREADY pulled still reconciles (recreate) here, because
+# the running container no longer matches the local image.
+#
+# On citadel and warrig (loki log driver) removals happen on stopped
+# containers only -- compose stops before it removes -- which is the safe
+# side of the teardown deadlock documented in roles/cadvisor/README.md.
+- name: Reconcile the stack's containers
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_stack_dir }}"
+    project_name: "{{ compose_stack_project }}"
+    state: "{{ compose_stack_state }}"
+    pull: missing
+  when: compose_stack_def.reconcile | default(true)

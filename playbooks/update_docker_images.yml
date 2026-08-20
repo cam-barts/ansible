@@ -140,14 +140,17 @@
         or watchtower_log is search('failed=[1-9]')
 
     - name: Prune unused images, stopped containers, networks and build cache
-      # -f because there is no TTY to answer the confirmation prompt, -a to
-      # take all unused images and not just dangling ones. Anything pulled
-      # but not running goes, and has to be re-pulled next time it is wanted.
-      ansible.builtin.command:
-        argv: [docker, system, prune, -af]
-      register: docker_prune
-      changed_when: "'Total reclaimed space: 0B' not in docker_prune.stdout"
-
-    - name: Report what the prune reclaimed
-      ansible.builtin.debug:
-        msg: "{{ docker_prune.stdout_lines | select('search', 'Total reclaimed') | list }}"
+      # dangling: false takes all unused images, not just dangling ones
+      # (the -a of `docker system prune -af`). Anything pulled but not
+      # running goes, and has to be re-pulled next time it is wanted.
+      # No volumes key here on purpose -- see the header. This used to shell
+      # out to `docker system prune -af` and string-match the output for
+      # change detection; community.docker.docker_prune is the same prune
+      # with real return data.
+      community.docker.docker_prune:
+        containers: true
+        images: true
+        images_filters:
+          dangling: false
+        networks: true
+        builder_cache: true

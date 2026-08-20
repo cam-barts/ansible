@@ -1,0 +1,34 @@
+version: '3.3'
+services:
+    muety:
+        ports:
+            - '3474:3000'
+        environment:
+            - WAKAPI_PASSWORD_SALT={{ wakapi_password_salt }}
+            - WAKAPI_SIGNUP_CAPTCHA=true
+            - WAKAPI_INVITE_CODES=true
+            - WAKAPI_EXPOSE_METRICS=true
+            - WAKAPI_DB_TYPE=postgres
+            - WAKAPI_DB_NAME=wakapi
+            - WAKAPI_DB_USER=wakapi
+            - WAKAPI_DB_HOST=db
+            - WAKAPI_DB_PORT=5432
+            - WAKAPI_DB_PASSWORD={{ wakapi_db_password }}
+            - WAKAPI_MAIL_ENABLED=false
+            - WAKAPI_HEARTBEAT_MAX_AGE=87600h
+        container_name: wakapi
+        restart: unless-stopped
+        image: 'ghcr.io/muety/wakapi:latest'
+        # image: 'ghcr.io/muety/wakapi:2.11.2'
+        # image: 'e6ab650c8ff6'
+    db:
+        image: postgres:17
+        restart: unless-stopped
+        ports:
+          - '5432:5432'
+        environment:
+          - POSTGRES_USER=wakapi
+          - POSTGRES_PASSWORD={{ wakapi_db_password }}        # alternatively, set POSTGRES_PASSWORD directly without the use of secrets
+          - POSTGRES_DB=wakapi
+        volumes:
+            - ./data/postgres:/var/lib/postgresql/data

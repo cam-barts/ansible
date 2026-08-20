@@ -1,0 +1,14 @@
+services:
+  server:
+    image: kutt/kutt:latest
+    volumes:
+       - ./database:/var/lib/kutt
+       - ./custom:/kutt/custom
+    environment:
+      DB_FILENAME: "/var/lib/kutt/data.sqlite"
+      JWT_SECRET: "{{ kutt_jwt_secret }}"
+      DEFAULT_DOMAIN: "tldr.cam"
+      TRUST_PROXY: true
+    restart: unless-stopped
+    ports:
+      - 5591:3000

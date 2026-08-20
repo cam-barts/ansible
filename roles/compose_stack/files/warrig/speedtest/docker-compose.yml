@@ -1,0 +1,15 @@
+version: '3.3'
+services:
+    speedtest-tracker:
+        container_name: speedtest-tracker
+        ports:
+            - '9292:80'
+            - '9393:443'
+        environment:
+            - PUID=1000
+            - PGID=1000
+        volumes:
+            - './:/config'
+        image: 'lscr.io/linuxserver/speedtest-tracker:latest'
+        restart: unless-stopped
+        env_file: .env

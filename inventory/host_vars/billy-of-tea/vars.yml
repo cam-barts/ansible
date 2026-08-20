@@ -1,0 +1,22 @@
+ansible_become: true
+# Canonical ansible_host for billy-of-tea. Verified correct 2026-08-17; every
+# inventory file that lists this host (raspberrypis, node_exporter,
+# backup_targets) leaves ansible_host unset so this is the single source of
+# truth under both `-i inventory/<file>` and `-i inventory/` directory mode.
+ansible_host: 192.168.1.82
+
+# --- compose stack tracking (roles/compose_stack) -------------------------
+# Byte-faithful catalog of this host's running compose stacks. Generated from
+# live captures 2026-08-19; secret values live in vault.yml alongside.
+compose_stack_root: /home/pirate
+compose_stacks:
+  bitwarden:
+    files:
+      - { src: billy-of-tea/bitwarden/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  portainer_agent:
+    files:
+      - { src: billy-of-tea/portainer_agent/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+
+# Secret passthroughs for compose_stack templates; values live in vault.yml.
+bitwarden_admin_token: "{{ vault_bitwarden_admin_token }}"
+bitwarden_yubico_secret_key: "{{ vault_bitwarden_yubico_secret_key }}"

@@ -158,3 +158,32 @@ cloudflared_credentials_json: "{{ vault_cloudflared_credentials_json }}"
 # runtime (only by `cloudflared tunnel login`), kept alongside the other two
 # files because that's how the live host has it.
 cloudflared_cert_pem: "{{ vault_cloudflared_cert_pem }}"
+
+# --- compose stack tracking (roles/compose_stack) -------------------------
+# Byte-faithful catalog of this host's running compose stacks. Generated from
+# live captures 2026-08-19; secret values live in vault.yml alongside.
+compose_stack_root: /home/nux/docker
+compose_stacks:
+  changedetection:
+    files:
+      - { src: citadel/changedetection/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  monitoring:
+    files:
+      - { src: citadel/monitoring/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  portainer:
+    files:
+      - { src: citadel/portainer/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  searxng-docker:
+    files:
+      - { src: citadel/searxng-docker/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+      - { src: citadel/searxng-docker/.env, dest: .env, mode: "0644" }
+  taskwarrior:
+    files:
+      - { src: citadel/taskwarrior/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  windmill:
+    files:
+      - { src: citadel/windmill/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+
+# Secret passthroughs for compose_stack templates; values live in vault.yml.
+windmill_db_password: "{{ vault_windmill_db_password }}"
+windmill_garage_webui_auth_user_pass: "{{ vault_windmill_garage_webui_auth_user_pass }}"

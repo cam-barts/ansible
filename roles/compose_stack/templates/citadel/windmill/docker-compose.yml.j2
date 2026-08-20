@@ -1,0 +1,179 @@
+version: "3.7"
+
+services:
+  db:
+    deploy:
+      # To use an external database, set replicas to 0 and set DATABASE_URL to the external database url in the .env file
+      replicas: 1
+      resources:
+        limits:
+          memory: 2048M
+    image: postgres:16
+    shm_size: 1g
+    restart: unless-stopped
+    # Default 10s is not enough for postgres' shutdown checkpoint here; a SIGKILL
+    # mid-shutdown forces a ~3min crash recovery (full data-dir fsync) on next start.
+    stop_grace_period: 2m
+    volumes:
+      - /home/nux/docker/windmill/db:/var/lib/postgresql/data
+    expose:
+      - 5432
+    ports:
+      - 5432:5432
+    command: postgres -c 'max_connections=1000'
+    environment:
+      POSTGRES_PASSWORD: {{ windmill_db_password }}
+      POSTGRES_DB: windmill
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Crash recovery can take several minutes; without this the container is
+      # marked unhealthy at ~50s and every depends_on: service_healthy blocks.
+      start_period: 5m
+
+  windmill_server:
+    # image: ghcr.io/windmill-labs/windmill:1.457.1
+    image: ghcr.io/windmill-labs/windmill:latest
+    pull_policy: always
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 4096M
+    restart: unless-stopped
+    expose:
+      - 8000
+      - 2525
+    environment:
+      - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
+      - MODE=server
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /home/nux/docker/windmill/worker/logs:/tmp/windmill/logs
+
+  windmill_worker:
+    # build:
+    #   context: .
+    image: ghcr.io/windmill-labs/windmill:latest
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2048M
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
+      - MODE=worker
+      - WORKER_GROUP=default
+    depends_on:
+      db:
+        condition: service_healthy
+    # to mount the worker folder to debug, KEEP_JOB_DIR=true and mount /tmp/windmill
+    volumes:
+      # mount the docker socket to allow to run docker containers from within the workers
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/nux/docker/windmill/worker/cache:/tmp/windmill/cache
+      - /home/nux/docker/windmill/worker/logs:/tmp/windmill/logs
+      - ./debian-testing.sources:/etc/apt/sources.list.d/debian-testing.sources
+      # Mount nux's SSH config read-only so f/celestial/warrig_spin_up / warrig_spin_down
+      # can `docker --host ssh://warrig` against Warrig's daemon. Slice 0 Warrig requirement.
+      - /home/nux/.ssh:/root/.ssh:ro
+
+  ## This worker is specialized for "native" jobs. Native jobs run in-process and thus are much more lightweight than other jobs
+  windmill_worker_native:
+    # Use ghcr.io/windmill-labs/windmill-ee:main for the ee
+    # build:
+    #   context: .
+    image: ghcr.io/windmill-labs/windmill:latest
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2048M
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
+      - MODE=worker
+      - WORKER_GROUP=native
+      - NUM_WORKERS=2
+      - NATIVE_MODE=true
+      - SLEEP_QUEUE=200
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /home/nux/docker/windmill/worker/logs:/tmp/windmill/logs
+  # This worker is specialized for reports or scraping jobs. It is assigned the "reports" worker group which has an init script that installs chromium and can be targeted by using the "chromium" worker tag.
+  windmill_worker_reports:
+    # build:
+    #   context: .
+    image: ghcr.io/windmill-labs/windmill:latest
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2048M
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
+      - MODE=worker
+      - WORKER_GROUP=reports
+      # - NUM_WORKERS=2
+    depends_on:
+      db:
+        condition: service_healthy
+    # to mount the worker folder to debug, KEEP_JOB_DIR=true and mount /tmp/windmill
+    volumes:
+      # mount the docker socket to allow to run docker containers from within the workers
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/nux/docker/windmill/worker/cache:/tmp/windmill/cache
+      - /home/nux/docker/windmill/worker/logs:/tmp/windmill/logs
+      # Mount nux's SSH config read-only so f/celestial/warrig_spin_up / warrig_spin_down
+      # can `docker --host ssh://warrig` against Warrig's daemon. Slice 0 Warrig requirement.
+      - /home/nux/.ssh:/root/.ssh:ro
+
+  caddy:
+    image: ghcr.io/windmill-labs/caddy-l4:latest
+    mem_limit: 512m
+    restart: unless-stopped
+    # Configure the mounted Caddyfile and the exposed ports or use another reverse proxy if needed
+    volumes:
+      - /home/nux/docker/windmill/Caddyfile:/etc/caddy/Caddyfile
+    ports:
+      # To change the exposed port, simply change 80:80 to <desired_port>:80. No other changes needed
+      - 8000:80
+      - 25:25
+    environment:
+      - BASE_URL=":80"
+      # - BASE_URL=":443" # uncomment and comment line above to enable HTTPS via custom certificate and key files
+      # - BASE_URL=mydomain.com # Uncomment and comment line above to enable HTTPS handling by Caddy
+  garage:
+    image: dxflrs/garage:v2.2.0
+    container_name: garage
+    restart: unless-stopped
+    ports:
+      - "9125:3900"
+    volumes:
+      - ./garage/config/garage.toml:/etc/garage.toml:ro
+      - ./garage/meta:/var/lib/garage/meta
+      - ./garage/data:/var/lib/garage/data
+
+  garage-webui:
+    image: khairul169/garage-webui:latest
+    container_name: garage-webui
+    restart: unless-stopped
+    ports:
+      - "9126:3909"
+    volumes:
+      - ./garage/config/garage.toml:/etc/garage.toml:ro
+    environment:
+      API_BASE_URL: "http://garage:3903"
+      S3_ENDPOINT_URL: "http://garage:3900"
+      AUTH_USER_PASS: "{{ windmill_garage_webui_auth_user_pass }}"

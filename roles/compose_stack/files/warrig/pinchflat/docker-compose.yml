@@ -1,0 +1,15 @@
+version: '3'
+services:
+  pinchflat:
+    image: ghcr.io/kieraneglin/pinchflat:latest
+    user: "1000:1000"
+    restart: unless-stopped
+    environment:
+      # Set the timezone to your local timezone
+      - TZ=America/New_York
+      - YT_DLP_WORKER_CONCURRENCY=5
+    ports:
+      - '8945:8945'
+    volumes:
+      - ./config:/config
+      - /home/nux/Videos/ytdl-sub/:/downloads

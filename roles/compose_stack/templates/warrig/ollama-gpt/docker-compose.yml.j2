@@ -1,0 +1,81 @@
+name: ollama-gpt
+services:
+  ollama:
+    volumes:
+      - ./ollama-data/:/root/.ollama
+    ports:
+      - 11434:11434
+    image: ollama/ollama
+    restart: unless-stopped
+    devices:
+      - nvidia.com/gpu=all
+
+  ollama-webui:
+      ports:
+        - 7013:8080
+      environment:
+        - OLLAMA_API_BASE_URL=http://ollama:11434/api
+        # - ENV=dev
+      volumes:
+        - ./webui-data/:/app/backend/data
+      container_name: ollama-webui
+      restart: unless-stopped
+      image: ghcr.io/open-webui/open-webui:main
+      devices:
+        - nvidia.com/gpu=all
+
+  mcp-karakeep:
+        build:
+            dockerfile: Dockerfile.mcpo.mcp-karakeep
+        ports:
+            - 11436:8000
+        restart: unless-stopped
+        environment:
+          KARAKEEP_API_ADDR: "https://hoarder.coder.cam"
+          KARAKEEP_API_KEY: "{{ ollama_gpt_karakeep_api_key }}"
+
+  mcp-obsidian:
+        build:
+            dockerfile: Dockerfile.mcpo.obsidian-mcp-server
+        ports:
+            - 11437:8000
+        restart: unless-stopped
+        environment:
+          OBSIDIAN_API_KEY: "{{ ollama_gpt_obsidian_api_key }}"
+
+  # perplexica:
+  #   image: itzcrazykns1337/perplexica:main
+  #   environment:
+  #     - SEARXNG_API_URL=https://searx.coder.cam
+  #     - DATA_DIR=/home/perplexica
+  #   ports:
+  #     - 3040:3000
+  #   volumes:
+  #     - ./perplexica_data:/home/perplexica/data
+  #     - ./perplexica_uploads:/home/perplexica/uploads
+  #     - ./perplexica_config.toml:/home/perplexica/config.toml
+  #   restart: unless-stopped
+
+  # mcp-server-time:
+  #     build:
+  #         dockerfile: Dockerfile.mcpo.mcp-server-time
+  #     ports:
+  #         - 11436:8000
+  #     restart: unless-stopped
+  #
+  # memory:
+  #     build:
+  #         dockerfile: Dockerfile.mcpo.memory
+  #     ports:
+  #         - 11435:8000
+  #     restart: unless-stopped
+  #     volumes:
+  #         - ./memory.json:/app/dist/memory.json
+
+  # kokoro-fastapi-gpu:
+  #     ports:
+  #         - 8880:8880
+  #     devices:
+  #       - nvidia.com/gpu=all
+  #     restart: unless-stopped
+  #     image: ghcr.io/remsky/kokoro-fastapi-gpu

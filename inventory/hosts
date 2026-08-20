@@ -73,3 +73,14 @@ archlinux
 [borgmatic_source]
 citadel
 warrig
+
+# Every host whose running compose stacks' files are tracked byte-faithfully
+# by roles/compose_stack (playbooks/configure_compose_*.yml, one per service).
+# Used for ad-hoc hygiene sweeps; the per-service playbooks name their own
+# hosts. gastown has no docker; pwnbox is warrig via the local connection.
+[compose_stacks]
+citadel
+warrig
+
+[compose_stacks:children]
+raspberrypis
