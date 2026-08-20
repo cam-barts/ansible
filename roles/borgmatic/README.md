@@ -156,17 +156,11 @@ sudo, so **every run needs `--ask-become-pass`, including `--check`**:
 
 ```sh
 # Dry-run
-ANSIBLE_ROLES_PATH=./roles ansible-playbook \
-    --check --diff --ask-become-pass \
-    playbooks/configure_borgmatic_citadel.yml
+ansible-playbook --check --diff --ask-become-pass playbooks/configure_borgmatic.yml
 
-# Apply
-ANSIBLE_ROLES_PATH=./roles ansible-playbook \
-    --ask-become-pass \
-    playbooks/configure_borgmatic_citadel.yml
+# Apply (both sources; narrow with -e borgmatic_target=citadel or =warrig)
+ansible-playbook --ask-become-pass playbooks/configure_borgmatic.yml
 ```
-
-Swap in `configure_borgmatic_warrig.yml` for warrig.
 
 One caveat on `--check`: the SSH keygen task carries `check_mode: false` so
 later tasks have a real file to slurp. A check run therefore does write one

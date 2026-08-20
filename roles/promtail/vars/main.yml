@@ -17,7 +17,7 @@ promtail_container_spec:
     HOSTNAME: "{{ inventory_hostname }}"
     LOKI_URL: "{{ promtail_loki_url }}"
   etc_hosts:
-    citadel.shadeking.cam.local: "{{ promtail_citadel_ip }}"
+    citadel.shadeking.cam.local: "{{ citadel_lan_ip }}"
   volumes:
     - "{{ promtail_config_dir }}/promtail-config.yml:/etc/promtail/config.yml:ro"
     - promtail_promtail-positions:/tmp/positions

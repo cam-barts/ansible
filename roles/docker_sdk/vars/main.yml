@@ -1,0 +1,6 @@
+---
+# Per-family package for the Docker SDK for Python. vars/ not defaults/: this
+# is a fact about the distros, not something a host should override.
+docker_sdk_package:
+  Debian: python3-docker
+  Archlinux: python-docker

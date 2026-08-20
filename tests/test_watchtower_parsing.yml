@@ -36,9 +36,11 @@
       ansible.builtin.assert:
         that:
           - (watchtower_log is search('updated=[1-9]')) == case.want_changed
+          # The playbook's failed_when also ORs `watchtower_run.rc != 0`,
+          # which a localhost test has no rc to exercise; only the two log
+          # clauses are tested here.
           - >-
-            (0 != 0
-             or watchtower_log is not search('updated=')
+            (watchtower_log is not search('updated=')
              or watchtower_log is search('failed=[1-9]')) == case.want_failed
         success_msg: "OK: {{ case.name }}"
         fail_msg: "MISMATCH: {{ case.name }}"

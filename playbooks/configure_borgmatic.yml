@@ -1,0 +1,35 @@
+---
+# Single play, both borg sources. Installs borgmatic, renders the config and
+# scripts, generates the <host>→gastown SSH key AND authorizes it on gastown,
+# writes the vault passphrase, stages the DB dumps (citadel) / adopts the
+# existing repo (warrig), and installs the per-host cron entry. Per-host
+# values (repo URL, label, excludes, databases, cron hour) live in
+# inventory/host_vars/<host>/vars.yml; see roles/borgmatic/README.md.
+#
+# History: this was one playbook per host, each of which had itself been two
+# plays until 2026-08-18. The two-play shape could never complete a first
+# run: the role pins root's ssh to the new key with IdentitiesOnly partway
+# through play 1, then probes the repo, dialling gastown with a key gastown
+# would not accept until play 2. Ansible runs with `-tt`, so the rejected
+# pubkey did not fail; sshd fell back to a password prompt and the play hung
+# on it (warrig hit exactly this). The authorized_key task now lives inside
+# the role, delegated to gastown, and runs before anything reaches across.
+#
+# serial: 1 because both hosts delegate authorized_key edits to the same
+# file on gastown; concurrent forks editing one authorized_keys can drop a
+# key. Config runs are seconds long, so the serialization costs nothing.
+#
+# Narrow with the usual idiom (--limit can only narrow, never widen):
+#   ansible-playbook --ask-become-pass playbooks/configure_borgmatic.yml
+#   ansible-playbook --ask-become-pass playbooks/configure_borgmatic.yml -e borgmatic_target=warrig
+#
+# Note the SSH keygen task carries check_mode: false, so even a --check run
+# writes the keypair (inert until authorized). become comes from each host's
+# ansible_become host_var; both sources have password-gated sudo, hence
+# --ask-become-pass.
+- name: Configure borgmatic for the daily push to gastown
+  hosts: "{{ borgmatic_target | default('borgmatic_source') }}"
+  serial: 1
+  gather_facts: true
+  roles:
+    - borgmatic

@@ -1,7 +1,7 @@
 ---
-# Two parallel apt/pacman task pairs rather than ansible.builtin.package:
-# cache_valid_time is apt-only and update_cache semantics differ between
-# the two modules, so a single smart-module call can't express both.
+# The cache refreshes stay per-manager (cache_valid_time is apt-only and
+# update_cache semantics differ), but the install itself is one
+# ansible.builtin.package call -- the names are family-independent.
 
 # changed_when: false for the same reason as the pacman sync below. apt
 # reports changed whenever it actually refreshes, which cache_valid_time
@@ -14,13 +14,6 @@
   changed_when: false
   when: ansible_facts['os_family'] == "Debian"
 
-- name: Install backup-target packages (Debian family)
-  ansible.builtin.apt:
-    name: "{{ backup_target_packages }}"
-    state: present
-  become: true
-  when: ansible_facts['os_family'] == "Debian"
-
 # changed_when: false because pacman reports `changed` on every db refresh,
 # which would make this task permanently noisy without ever indicating that
 # anything on the host actually changed.
@@ -31,9 +24,8 @@
   changed_when: false
   when: ansible_facts['os_family'] == "Archlinux"
 
-- name: Install backup-target packages (Archlinux family)
-  community.general.pacman:
+- name: Install backup-target packages
+  ansible.builtin.package:
     name: "{{ backup_target_packages }}"
     state: present
   become: true
-  when: ansible_facts['os_family'] == "Archlinux"

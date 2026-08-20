@@ -3,9 +3,6 @@
 # rulesets on 2026-08-17. See README for the comparison and the Docker
 # caveat. Additive only: the role never disables or removes anything.
 
-# Single source of truth: inventory/group_vars/all.yml.
-firewalld_citadel_ip: "{{ citadel_lan_ip }}"
-
 # Additive rich rules: {port, proto, source[, hosts]}. `hosts` (list of
 # inventory_hostname) restricts a rule to specific play hosts; omit to apply
 # on every host the role runs against.
@@ -35,11 +32,11 @@ firewalld_citadel_ip: "{{ citadel_lan_ip }}"
 firewalld_rich_rules:
   - port: "9100"
     proto: tcp
-    source: "{{ firewalld_citadel_ip }}"
+    source: "{{ citadel_lan_ip }}"
     hosts:
       - warrig
   - port: "8080"
     proto: tcp
-    source: "{{ firewalld_citadel_ip }}"
+    source: "{{ citadel_lan_ip }}"
     hosts:
       - warrig

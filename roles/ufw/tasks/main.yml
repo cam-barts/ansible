@@ -26,7 +26,7 @@
 - name: Allow all traffic from main workstation
   community.general.ufw:
     rule: allow
-    from_ip: "{{ ufw_workstation_ip }}"
+    from_ip: "{{ warrig_lan_ip }}"
   become: true
 
 - name: Allow node_exporter from citadel
@@ -34,7 +34,7 @@
     rule: allow
     port: "9100"
     proto: tcp
-    from_ip: "{{ ufw_citadel_ip }}"
+    from_ip: "{{ citadel_lan_ip }}"
   become: true
 
 - name: Enable UFW

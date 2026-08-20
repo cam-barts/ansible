@@ -11,13 +11,6 @@
   changed_when: false
   when: ansible_facts['os_family'] == "Debian"
 
-- name: Install node_exporter (Debian/Raspbian)
-  ansible.builtin.apt:
-    name: prometheus-node-exporter
-    state: present
-  become: true
-  when: ansible_facts['os_family'] == "Debian"
-
 # Split from the install: community.general.pacman reports `changed` whenever
 # it refreshes the db, so folding update_cache into the install would make the
 # task report changed on every run forever. A db refresh is not a change to
@@ -29,12 +22,14 @@
   changed_when: false
   when: ansible_facts['os_family'] == "Archlinux"
 
-- name: Install node_exporter (Archlinux)
-  community.general.pacman:
+# The package name is identical on both families, so the install (unlike the
+# cache refreshes above, whose semantics differ per manager) is one
+# smart-module call.
+- name: Install node_exporter
+  ansible.builtin.package:
     name: prometheus-node-exporter
     state: present
   become: true
-  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Enable and start node_exporter
   ansible.builtin.systemd:

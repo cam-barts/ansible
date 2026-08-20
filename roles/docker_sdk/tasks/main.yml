@@ -1,0 +1,31 @@
+---
+# The Docker SDK for Python, required by community.docker modules. Only this
+# role needs privilege; the docker_* tasks in the roles that pull this in
+# (cadvisor, promtail, ntfy_server -- via meta/main.yml dependencies) run as
+# the login user, who is in the `docker` group. Extracted from three verbatim
+# copies of this preamble so the fleet can't drift.
+
+# The cache refreshes stay per-manager (cache_valid_time is apt-only and
+# update_cache semantics differ); changed_when: false on both because a cache
+# refresh is not a change to the host, and apt/pacman both report one.
+- name: Update apt cache (ignore errors from broken repos)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  failed_when: false
+  changed_when: false
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Refresh the pacman database (Archlinux)
+  community.general.pacman:
+    update_cache: true
+  become: true
+  changed_when: false
+  when: ansible_facts['os_family'] == "Archlinux"
+
+- name: Install Docker SDK for Python
+  ansible.builtin.package:
+    name: "{{ docker_sdk_package[ansible_facts['os_family']] }}"
+    state: present
+  become: true

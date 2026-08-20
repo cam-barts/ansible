@@ -1,4 +1,1 @@
 ---
-# Single source of truth: inventory/group_vars/all.yml.
-ufw_workstation_ip: "{{ warrig_lan_ip }}"
-ufw_citadel_ip: "{{ citadel_lan_ip }}"
