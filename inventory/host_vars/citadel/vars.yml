@@ -170,6 +170,8 @@ compose_stacks:
   monitoring:
     files:
       - { src: citadel/monitoring/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: citadel/monitoring/prometheus.yml, dest: prometheus.yml, mode: "0644" }
+      - { src: citadel/monitoring/loki-config.yaml, dest: loki-config.yaml, mode: "0644" }
   portainer:
     files:
       - { src: citadel/portainer/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
@@ -183,7 +185,12 @@ compose_stacks:
   windmill:
     files:
       - { src: citadel/windmill/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+      - { src: citadel/windmill/Caddyfile, dest: Caddyfile, mode: "0644" }
+      - { src: citadel/windmill/debian-testing.sources, dest: debian-testing.sources, mode: "0644" }
+      - { src: citadel/windmill/garage/config/garage.toml.j2, dest: garage/config/garage.toml, mode: "0640" }
 
 # Secret passthroughs for compose_stack templates; values live in vault.yml.
 windmill_db_password: "{{ vault_windmill_db_password }}"
+windmill_garage_rpc_secret: "{{ vault_windmill_garage_rpc_secret }}"
+windmill_garage_admin_token: "{{ vault_windmill_garage_admin_token }}"
 windmill_garage_webui_auth_user_pass: "{{ vault_windmill_garage_webui_auth_user_pass }}"

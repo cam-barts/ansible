@@ -205,12 +205,14 @@ compose_stacks:
   blaze:
     files:
       - { src: warrig/blaze/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/blaze/nginx/compose-nginx.conf, dest: nginx/compose-nginx.conf, mode: "0644" }
   cyberchef:
     files:
       - { src: warrig/cyberchef/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
   dashy:
     files:
       - { src: warrig/dashy/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+      - { src: warrig/dashy/conf.yml, dest: conf.yml, mode: "0600" }
   excalidraw:
     files:
       - { src: warrig/excalidraw/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
@@ -251,6 +253,8 @@ compose_stacks:
     files:
       - { src: warrig/plausible/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
       - { src: warrig/plausible/plausible-conf.env.j2, dest: plausible-conf.env, mode: "0640" }
+      - { src: warrig/plausible/clickhouse/clickhouse-config.xml, dest: clickhouse/clickhouse-config.xml, mode: "0644" }
+      - { src: warrig/plausible/clickhouse/clickhouse-user-config.xml, dest: clickhouse/clickhouse-user-config.xml, mode: "0644" }
   portainer_agent:
     files:
       - { src: warrig/portainer_agent/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }

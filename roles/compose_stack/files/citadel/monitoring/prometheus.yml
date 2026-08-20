@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: grafana
+    static_configs:
+      - targets: ['grafana:3000']
+  - job_name: node_exporter
+    static_configs:
+      - targets: ['192.168.1.88:9100']
+        labels:
+          instance: citadel
+      - targets: ['192.168.1.84:9100']
+        labels:
+          instance: black-pearl
+      - targets: ['192.168.1.66:9100']
+        labels:
+          instance: wellerman
+      - targets: ['192.168.1.82:9100']
+        labels:
+          instance: billy-of-tea
+      - targets: ['192.168.1.168:9100']
+        labels:
+          instance: warrig
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          instance: citadel
+      - targets: ['warrig.shadeking.cam.local:8080']
+        labels:
+          instance: warrig
+      - targets: ['192.168.1.84:8080']
+        labels:
+          instance: black-pearl
+      - targets: ['192.168.1.66:8080']
+        labels:
+          instance: wellerman
+      - targets: ['192.168.1.82:8080']
+        labels:
+          instance: billy-of-tea

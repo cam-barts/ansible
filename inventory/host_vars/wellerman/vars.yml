@@ -25,6 +25,7 @@ compose_stacks:
   wishthis:
     files:
       - { src: wellerman/wishthis/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+      - { src: wellerman/wishthis/config.php.j2, dest: config.php, mode: "0640" }
 
 # Secret passthroughs for compose_stack templates; values live in vault.yml.
 wishthis_mariadb_password: "{{ vault_wishthis_mariadb_password }}"

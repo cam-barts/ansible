@@ -17,3 +17,9 @@ inventory/host_vars/citadel/vars.yml yaml[line-length]
 roles/compose_stack/files/warrig/immich/docker-compose.yml yaml[line-length]
 roles/compose_stack/files/warrig/metube/docker-compose.yml yaml[line-length]
 roles/compose_stack/files/warrig/webhooksite/docker-compose.yml yaml[indentation]
+roles/compose_stack/files/warrig/dashy/conf.yml yaml[indentation]
+
+# The subdirectory task deliberately sets no mode: forcing one would rewrite
+# the modes of directories that already exist on the hosts, and the point of
+# this role is byte/attr fidelity to what is live.
+roles/compose_stack/tasks/main.yml risky-file-permissions

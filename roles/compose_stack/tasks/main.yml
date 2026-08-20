@@ -14,6 +14,18 @@
       inventory/host_vars/<host>/vars.yml.
     quiet: true
 
+# Some tracked files live in subdirectories of the stack dir (windmill's
+# garage/config/, plausible's clickhouse/, blaze's nginx/). Recreate them on
+# a wiped host before writing files; no mode is forced, so directories that
+# already exist are left as they are apart from ownership.
+- name: Ensure subdirectories for tracked files exist
+  ansible.builtin.file:
+    path: "{{ compose_stack_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ compose_stack_owner }}"
+    group: "{{ compose_stack_group }}"
+  loop: "{{ compose_stack_def.files | map(attribute='dest') | select('search', '/') | map('dirname') | unique | list }}"
+
 # diff: false so `ansible-playbook --diff` cannot print the rendered secrets.
 - name: Template the stack's secret-bearing files
   ansible.builtin.template:

@@ -29,10 +29,15 @@ down stack comes up, and a converged stack reports zero changes.
   this lab; this role owns state. An image Watchtower already pulled still
   reconciles here (the running container no longer matches it).
 
-Scope is the compose file plus the env files compose reads — NOT sibling
-bind-mounted app configs (searxng's settings.yml, monitoring's
-prometheus.yml, wishthis's config.php, …). A restored compose file points at
-those paths but this role does not recreate their contents.
+Scope is the compose file, the env files compose reads, and every
+SINGLE-FILE bind mount the stack's containers carry (prometheus.yml,
+loki-config.yaml, Caddyfile, garage.toml, clickhouse XMLs, dashy's
+conf.yml, wishthis's config.php, …) — the files a stack needs present to
+start. Directory bind mounts (searxng's ./searxng/, grafana provisioning,
+data dirs) are deliberately NOT tracked; the role recreates missing
+subdirectories for its tracked files but never reconstitutes whole config
+trees. One deliberate skip: ansible-semaphore's semaphore-config/gitconfig
+is owned by uid 1001/root and not writable by nux.
 
 ## The loki teardown hazard
 
