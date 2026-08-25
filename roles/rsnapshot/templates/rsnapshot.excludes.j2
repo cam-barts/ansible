@@ -21,3 +21,11 @@
 **/letsencrypt/accounts/
 **/.cache/paru/
 **/.ruff_cache/
+# warrig media-automation stack (2026-08-24): torrents + arr-managed media
+# under ~/data are bulk replaceable content, deliberately not backed up.
+# rsnapshot passes --relative, so exclude anchoring is against / and paths
+# arrive as /home/nux/data/... Patterns must carry the full path (same as
+# the /home/nux/home/ entry above). Bare /data/... never matches. Only warrig
+# has these; citadel has no ~/data.
+/home/nux/data/torrents/
+/home/nux/data/media/

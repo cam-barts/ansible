@@ -61,6 +61,48 @@ if ! flock -w {{ rsnapshot_lock_wait_seconds }} 9; then
     exit 0
 fi
 
+# Bound the rsnapshot log (root-owned, separate from the wrapper's own stdout
+# capture above). Nothing on gastown rotates it: it is absent from
+# /etc/logrotate.conf, all 60 files under /etc/logrotate.d/, and
+# /usr/local/etc/logrotate.d/, and /usr/syno/etc/logrotate* does not exist at
+# all. It reached 1.1G unrotated (checked 2026-08-25). A logrotate drop-in
+# would need root to deploy and this role deliberately avoids `become`, so
+# the wrapper trims it here instead, since it already runs as root under
+# synoschedtask.
+#
+# `cat > "$log"` truncates in place and keeps the inode: rsnapshot opens the
+# log O_APPEND, so `mv` or `rm` here would orphan that fd and the space it
+# holds open would not free until the running rsnapshot process exits.
+log="{{ rsnapshot_log_path }}"
+log_size=$(stat -c %s "$log" 2>/dev/null || echo 0)
+if [ "$log_size" -gt {{ rsnapshot_log_max_bytes }} ]; then
+    tmp=$(mktemp) && tail -c {{ rsnapshot_log_tail_bytes }} "$log" > "$tmp" && cat "$tmp" > "$log" && rm -f "$tmp"
+fi
+
+# Low-disk alert on /volume1. gastown is not in inventory's node_exporter
+# group, so it exports no Prometheus metrics and no Grafana alert can fire
+# for it: ntfy is the only signal this tier has. /volume1 silently filled to
+# 96% on 2026-08-25 and broke both backup tiers before anyone noticed. `df
+# -P` in 1K blocks is portable across the DSM busybox/coreutils mix.
+#
+# Warn and continue rather than abort: a degraded backup still beats no
+# backup. This can only warn while rsnapshot itself still runs, so it cannot
+# catch a scheduler that stopped firing entirely.
+# df is pointed at the snapshot root rather than a hardcoded /volume1 so the
+# alert follows the data if the root ever moves; df reports the filesystem
+# containing the path either way. GB in the message because this lands on a
+# phone, where a raw KB figure is unreadable at a glance.
+disk_free_kb=$(df -P {{ rsnapshot_snapshot_root }} 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "${disk_free_kb:-}" ] && [ "$disk_free_kb" -lt {{ rsnapshot_disk_free_floor_kb }} ]; then
+    disk_free_gb=$((disk_free_kb / 1048576))
+    "$ntfy" publish \
+        -t "rsnapshot $interval low disk" \
+        -p {{ rsnapshot_ntfy_priority_fail }} \
+        --tags=backup,warning \
+        "$topic" \
+        "{{ rsnapshot_snapshot_root }} has ${disk_free_gb}G free on {{ inventory_hostname }}, below the {{ (rsnapshot_disk_free_floor_kb / 1048576) | int }}G floor; backup continuing anyway but the volume needs attention" >/dev/null 2>&1 || true
+fi
+
 "$ntfy" publish \
     -t "rsnapshot $interval started" \
     -p {{ rsnapshot_ntfy_priority_start }} \

@@ -175,6 +175,10 @@ borgmatic_excludes:
   - "*/.npm/*"
   # Ollama model blobs: 14G, re-pullable from the registry.
   - "/home/nux/docker_services/ollama-gpt/*/models/*"
+  # /home/nux/data is the arr stack's media and torrents tree (943G), bulk
+  # replaceable content deliberately not backed up. Missing here let it get
+  # swept into the 2026-08-24 run (155.21 GB -> 476.45 GB dedup). Added 2026-08-25.
+  - "/home/nux/data/*"
 
 # Databases: none, deliberately. warrig runs plenty of containerised DBs
 # (immich_postgres, atuin-postgresql, hoppscotch-postgres, plausible_db,

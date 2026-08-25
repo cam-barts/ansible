@@ -43,6 +43,29 @@ rsnapshot_log_dir: /volume1/NetBackup/rsnapshot-logs
 rsnapshot_log_path: "{{ rsnapshot_log_dir }}/rsnapshot.log"
 rsnapshot_wrapper_out_path: "{{ rsnapshot_log_dir }}/rsnapshot-run.last.out"
 
+# Wrapper-level guards, added after the 1.1G rsnapshot.log (checked
+# 2026-08-25, no logrotate entry anywhere on gastown: /etc/logrotate.conf,
+# /etc/logrotate.d/*, /usr/local/etc/logrotate.d/ all miss it, and
+# /usr/syno/etc/logrotate* does not exist) and the 96%-full /volume1 that
+# broke both backup tiers silently the same day. See templates/rsnapshot-run.sh.j2.
+#
+# Log trims once it passes this size, keeping the last rsnapshot_log_tail_bytes.
+# 256M is well under the 1.1G that caused trouble, but loose enough that a
+# normal verbose=2/loglevel=3 run cycle (see rsnapshot_verbose below) doesn't
+# trigger a trim every invocation.
+rsnapshot_log_max_bytes: 268435456
+
+# Kept tail on trim. 32M is enough recent history to debug a failed run
+# without re-growing the file back toward the max on the next check.
+rsnapshot_log_tail_bytes: 33554432
+
+# Free-space floor on /volume1, in 1K blocks (matches `df -P` output, which
+# the wrapper uses since it's portable across the DSM busybox/coreutils
+# mix). 300G gives a buffer before /volume1 repeats the 2026-08-25 96%-full
+# incident; gastown has no node_exporter/Grafana coverage, so this is the
+# only low-disk signal this tier gets.
+rsnapshot_disk_free_floor_kb: 314572800
+
 # Binaries. rsnapshot symlink survives the 1.5.1-5 install; ntfy is the
 # binwiederhier standalone v1.29.0 unpacked in nux's home.
 rsnapshot_bin: /usr/local/bin/rsnapshot
