@@ -3,6 +3,9 @@ x-bw-env: &bw-env
   API_WHITELIST_IPS: "{{ bunkerweb_whitelist_ips }}" # Make sure to set the correct IP range so the scheduler can send the configuration to the instance
   API_WHITELIST_IP: "{{ bunkerweb_whitelist_ips }}" # Make sure to set the correct IP range so the scheduler can send the configuration to the instance
   WHITELIST_IP: "{{ bunkerweb_whitelist_ips }}" # Make sure to set the correct IP range so the scheduler can send the configuration to the instance
+  # Stock default was 32934 (Meta). A whitelist hit bypasses every later security
+  # check, so that ASN could never reach the auto-ban pipeline. Blanked deliberately.
+  WHITELIST_ASN: ""
   DATABASE_URI: "mariadb+pymysql://bunkerweb:{{ bunkerweb_db_password }}@bw-db:3306/db" # Remember to set a stronger password for the database
   USE_ROBOTSTXT: "yes"
   USE_WHITELIST: "yes"
@@ -11,13 +14,16 @@ x-bw-env: &bw-env
 services:
   bunkerweb:
     # This is the name that will be used to identify the instance in the Scheduler
-    image: bunkerity/bunkerweb:1.6.9
+    image: bunkerity/bunkerweb:1.6.14
     ports:
       - "80:8080/tcp"
       - "443:8443/tcp"
       - "443:8443/udp" # For QUIC / HTTP3 support
     environment:
       <<: *bw-env # We use the anchor to avoid repeating the same settings for all services
+      # 1.6.14 changed this default to "no"; 1.6.9 behaved as "yes". Pinned so the
+      # upgrade does not also start bouncing through the loading config on restart.
+      KEEP_CONFIG_ON_RESTART: "yes"
     extra_hosts:
       - "citadel.shadeking.cam.local:192.168.1.88"
     restart: "unless-stopped"
@@ -25,9 +31,14 @@ services:
       - bw-universe
       - bw-services
 
+  # 2g, not 512m: the scheduler's job cycle (Let's Encrypt checks across ~48 vhosts plus
+  # bw_jobs_cache blobs) peaks around 700MiB. At 512m the kernel cgroup OOM-killed its
+  # python3 child every few minutes from 2026-08-27, and because PID 1 never sees a signal
+  # this looks like a clean exit 0 restart rather than a crash. See
+  # reference-bunkerweb-scheduler-oom-restart-loop.
   bw-scheduler:
-    image: bunkerity/bunkerweb-scheduler:1.6.9
-    mem_limit: 512m
+    image: bunkerity/bunkerweb-scheduler:1.6.14
+    mem_limit: 2g
     environment:
       <<: *bw-env
       BUNKERWEB_INSTANCES: "bunkerweb" # Make sure to set the correct instance name
@@ -44,7 +55,7 @@ services:
       - bw-db
 
   bw-api:
-    image: bunkerity/bunkerweb-api:1.6.9
+    image: bunkerity/bunkerweb-api:1.6.14
     mem_limit: 512m
     restart: "unless-stopped"
     environment:
@@ -60,7 +71,7 @@ services:
       - bw-db
 
   bw-ui:
-    image: bunkerity/bunkerweb-ui:1.6.9
+    image: bunkerity/bunkerweb-ui:1.6.14
     mem_limit: 512m
     environment:
       <<: *bw-env
