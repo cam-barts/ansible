@@ -1,6 +1,6 @@
 services:
   jellyfin:
-    image: jellyfin/jellyfin
+    image: jellyfin/jellyfin:12.0
     container_name: jellyfin
     user: 1000:1000
     ports:
@@ -25,6 +25,25 @@ services:
         source: /home/nux/Music/sorted/
         target: /music/cam
         # read_only: true
+      - type: bind
+        source: /home/nux/data/media
+        # /library, NOT /data/media: Jellyfin's duplicate-path check is a naive
+        # substring match, so /data/media/* collides with the /media library
+        # mount and gets silently dropped from every scan
+        target: /library
+        read_only: true
+      - type: volume
+        source: gastown-media
+        # NAS cold tier on gastown VideoNet; /cold avoids the substring trap
+        target: /cold
+        read_only: true
     restart: 'unless-stopped'
     devices:
       - nvidia.com/gpu=all
+volumes:
+  gastown-media:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=192.168.1.99,ro,nfsvers=4.1
+      device: ":/volume2/VideoNet/media"

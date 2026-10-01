@@ -6,14 +6,14 @@ services:
     command: start
     volumes:
       - "./config:/config"
-    links:
-      - postgresql:db
+    depends_on:
+      - postgresql
     ports:
       - 2923:8888
     environment:
       ATUIN_HOST: "0.0.0.0"
       ATUIN_OPEN_REGISTRATION: "false"
-      ATUIN_DB_URI: postgres://$ATUIN_DB_USERNAME:$ATUIN_DB_PASSWORD@db/$ATUIN_DB_NAME
+      ATUIN_DB_URI: postgres://$ATUIN_DB_USERNAME:$ATUIN_DB_PASSWORD@postgresql/$ATUIN_DB_NAME
       RUST_LOG: info,atuin_server=debug
   postgresql:
     image: postgres:14

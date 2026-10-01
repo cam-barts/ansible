@@ -1,0 +1,37 @@
+name: alloy-journal
+
+services:
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy-journal
+    restart: unless-stopped
+    # Needs to read /var/log/journal, which is root:systemd-journal.
+    user: root
+    # Host networking, not a bridge: warrig's Docker has exhausted its default
+    # address pool (33 networks against a ~31 ceiling) and cannot create another
+    # one. It also means citadel can push to localhost:3100, and DNS uses the
+    # host resolver rather than a container's.
+    network_mode: host
+    environment:
+      # warrig pushes across the network; citadel overrides this to the
+      # container-network address in its own .env.
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://citadel.shadeking.cam.local:3100/loki/api/v1/push}
+    command:
+      - run
+      # Loopback only: with host networking a 0.0.0.0 bind would expose Alloy's
+      # UI to the LAN, outside BunkerWeb.
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    # Port 12345 is deliberately not published: nothing needs to reach Alloy's
+    # UI from the LAN, and an unpublished port cannot be reached around
+    # BunkerWeb's auth.
+
+volumes:
+  alloy-data:

@@ -193,6 +193,10 @@ borgmatic_excludes:
 # live captures 2026-08-19; secret values live in vault.yml alongside.
 compose_stack_root: /home/nux/docker_services
 compose_stacks:
+  alloy-journal:
+    files:
+      - { src: warrig/alloy-journal/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/alloy-journal/config.alloy, dest: config.alloy, mode: "0644" }
   ansible-semaphore:
     files:
       - { src: warrig/ansible-semaphore/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }

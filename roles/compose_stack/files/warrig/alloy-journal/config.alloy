@@ -1,0 +1,87 @@
+// Ships systemd journal to Loki as host-syslog / host-auth / host-kernel.
+//
+// warrig and citadel are Arch and journald-only: there is no /var/log/syslog,
+// auth.log or kern.log for the Pis' file-based promtail jobs to tail. So the
+// same three job labels are synthesised from journal fields instead, which
+// keeps the Grafana queries identical across the whole fleet.
+//
+// Alloy rather than promtail because promtail is past EOL, and the Pi promtail
+// config already aligns its label names to Alloy's convention on purpose.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+loki.write "default" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+  }
+}
+
+loki.relabel "journal" {
+  // Only used to export .rules to loki.source.journal below; nothing is
+  // forwarded from here directly.
+  forward_to = []
+
+  // Default job. This MUST be a relabel rule rather than the `labels` argument
+  // on loki.source.journal: with relabel_rules set, Alloy's own default
+  // (job="loki.source.journal.read") wins over that static label. __journal__transport
+  // is present on every entry, so regex ".*" makes this rule always fire; the
+  // two rules below then override it for auth and kernel.
+  rule {
+    source_labels = ["__journal__transport"]
+    regex         = ".*"
+    target_label  = "job"
+    replacement   = "host-syslog"
+  }
+
+  // syslog facility 4 = auth, 10 = authpriv. Matches what the Pis get from
+  // tailing /var/log/auth.log.
+  rule {
+    source_labels = ["__journal_syslog_facility"]
+    regex         = "(4|10)"
+    target_label  = "job"
+    replacement   = "host-auth"
+  }
+
+  // Anything arriving over the kernel transport is what /var/log/kern.log
+  // would have held.
+  rule {
+    source_labels = ["__journal__transport"]
+    regex         = "kernel"
+    target_label  = "job"
+    replacement   = "host-kernel"
+  }
+
+  // Take the host label from the journal itself rather than hardcoding it, so
+  // it matches whatever the Docker loki driver already emits on this machine
+  // (currently "Warrig" on warrig, "citadel" on citadel).
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "systemd_unit"
+  }
+
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    target_label  = "syslog_identifier"
+  }
+}
+
+loki.source.journal "read" {
+  forward_to    = [loki.write.default.receiver]
+  relabel_rules = loki.relabel.journal.rules
+
+  // No `labels` block: the job label is set by the relabel rules above,
+  // because a static one here is overridden by Alloy's component default.
+
+  // Short window so a first start (or a restart with a lost position) does not
+  // dump hours of backlog into Loki in one burst.
+  max_age = "1h"
+  path    = "/var/log/journal"
+}
