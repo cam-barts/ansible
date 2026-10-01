@@ -121,7 +121,12 @@ rsnapshot_ssh_args: "-i {{ rsnapshot_ssh_key }} -o BatchMode=yes -o StrictHostKe
 # under `<topic>`, not `host/topic`, so existing subscriptions keep working.
 rsnapshot_ntfy_topic: changeme_set_via_vault
 rsnapshot_ntfy_priority_start: min
-rsnapshot_ntfy_priority_ok: default
+# `ok` fires on every clean hourly, i.e. ~24 times a day. At `default` each one
+# buzzed the phone, which is why Cam asked for it to be quieted 2026-09-01.
+# `min` still records the run in the ntfy feed for auditing but doesn't notify.
+# Deliberately NOT changed: warn stays low and fail stays high, so a real
+# failure or the /volume1 disk floor still pages loudly.
+rsnapshot_ntfy_priority_ok: min
 rsnapshot_ntfy_priority_warn: low
 rsnapshot_ntfy_priority_fail: high
 

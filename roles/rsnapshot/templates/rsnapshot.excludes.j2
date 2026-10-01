@@ -29,3 +29,63 @@
 # has these; citadel has no ~/data.
 /home/nux/data/torrents/
 /home/nux/data/media/
+
+# --- 2026-08-31 -------------------------------------------------------------
+# Cache and Downloads. warrig's /home/nux is 1.9T; data/torrents (1.5T) was
+# already excluded but .cache (249G) was not, so the hourly pull scanned ~400 GB
+# and the 01:00 run did not finish until 02:25, overrunning its own slot.
+# borgmatic already excludes both on warrig ("*/.cache/*", "*/Downloads/*"),
+# so this only brings rsnapshot in line with the other tier.
+**/.cache/
+**/Downloads/
+
+# Root-owned container data: the pull users (nux@warrig, nux@citadel) cannot
+# read these, so every run logged hundreds of "Permission denied (13)" and
+# exited 23 ("some files/attrs were not transferred"). Nothing is lost by
+# excluding them: borgmatic runs from ROOT cron on both hosts and its exclude
+# list drops only Ollama model blobs, so all of the below are already captured
+# there. This is the same call the DB block above made for the Pis.
+#
+# Full paths because rsnapshot passes --relative and anchoring is against /.
+# Deliberately NOT collapsed to **/data/ or **/db/: those match real directories
+# elsewhere under docker_services, and excluding too much loses data silently.
+
+# citadel (/home/nux/docker/)
+/home/nux/docker/alloy/alloy_data/
+/home/nux/docker/changedetection/data/
+/home/nux/docker/taskwarrior/data/
+/home/nux/docker/windmill/db/
+/home/nux/docker/windmill/garage/
+
+# warrig (/home/nux/docker_services/) - postgres and other DB data dirs
+/home/nux/docker_services/ansible-semaphore/semaphore-postgres18/
+/home/nux/docker_services/atuin/database/
+/home/nux/docker_services/baserow/pgdata/
+/home/nux/docker_services/flagsmith/pgdata/
+/home/nux/docker_services/ghostfolio/postgres-data/
+/home/nux/docker_services/hoppscotch/hoppscotch-postgres/
+/home/nux/docker_services/immich/postgres/
+/home/nux/docker_services/linkwarden/pgdata/
+/home/nux/docker_services/nocodb/pgdata/
+/home/nux/docker_services/readflow/db-data/
+
+# warrig - search indexes, vector stores and model caches, all rebuildable
+/home/nux/docker_services/hoarder/melisearch/
+/home/nux/docker_services/meilisearch/meili_data/
+/home/nux/docker_services/ollama-gpt/ollama-data/
+/home/nux/docker_services/silverbullet/meili_data/
+/home/nux/docker_services/weaviate/weaviate_data/
+/home/nux/docker_services/whishper/whishper_data/
+
+# warrig - remaining root-owned app state
+/home/nux/docker_services/ansible-semaphore/semaphore-config/
+/home/nux/docker_services/ansible-semaphore/semaphore-tmp/
+/home/nux/docker_services/appsmith/stacks/
+/home/nux/docker_services/babybuddy/data/
+/home/nux/docker_services/baserow/caddy_config/
+/home/nux/docker_services/canarytokens-docker/data/
+/home/nux/docker_services/grocy-docker/bbconfig/
+/home/nux/docker_services/moodle/Databases/
+/home/nux/docker_services/shortlink/shortpaste/
+/home/nux/docker_services/sorry_cypress/data/
+/home/nux/git_local/celestial/
