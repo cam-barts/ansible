@@ -14,7 +14,7 @@ x-bw-env: &bw-env
 services:
   bunkerweb:
     # This is the name that will be used to identify the instance in the Scheduler
-    image: bunkerity/bunkerweb:1.6.14
+    image: bunkerity/bunkerweb:1.6.15
     ports:
       - "80:8080/tcp"
       - "443:8443/tcp"
@@ -37,7 +37,7 @@ services:
   # this looks like a clean exit 0 restart rather than a crash. See
   # reference-bunkerweb-scheduler-oom-restart-loop.
   bw-scheduler:
-    image: bunkerity/bunkerweb-scheduler:1.6.14
+    image: bunkerity/bunkerweb-scheduler:1.6.15
     mem_limit: 2g
     environment:
       <<: *bw-env
@@ -55,7 +55,7 @@ services:
       - bw-db
 
   bw-api:
-    image: bunkerity/bunkerweb-api:1.6.14
+    image: bunkerity/bunkerweb-api:1.6.15
     mem_limit: 512m
     restart: "unless-stopped"
     environment:
@@ -71,7 +71,7 @@ services:
       - bw-db
 
   bw-ui:
-    image: bunkerity/bunkerweb-ui:1.6.14
+    image: bunkerity/bunkerweb-ui:1.6.15
     mem_limit: 512m
     environment:
       <<: *bw-env
