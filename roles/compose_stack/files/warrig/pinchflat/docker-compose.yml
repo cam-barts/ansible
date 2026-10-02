@@ -1,15 +1,34 @@
-version: '3'
 services:
   pinchflat:
-    image: ghcr.io/kieraneglin/pinchflat:latest
+    image: ghcr.io/thebadfella/pinchflat-ngx:latest
     user: "1000:1000"
     restart: unless-stopped
     environment:
       # Set the timezone to your local timezone
       - TZ=America/New_York
+      # Read once by migration 20260817153000 and written into settings; after
+      # that first boot the DB value wins and editing this does nothing.
       - YT_DLP_WORKER_CONCURRENCY=5
+      # yt-dlp ships as a PyInstaller onefile binary: it extracts ~40 MB of
+      # _MEI* per run and leaks the dir when SIGKILLed. With TMPDIR unset those
+      # pile up in the container's writable layer, and /var/lib/docker (sdb6)
+      # has only 17 GB free. Send them to the bind so they are prunable from
+      # the host. /mnt/d is not mounted noexec, so the extracted binaries run.
+      - TMPDIR=/tmp/pinchflat
+      # TMPFILE_PATH defaults to $TMPDIR + /pinchflat/data, so setting TMPDIR
+      # alone would silently move it and orphan the existing dir. Pin it.
+      - TMPFILE_PATH=/tmp/pinchflat/data
+      # ngx-only: finish downloads on SSD, then transfer into the library.
+      - DOWNLOAD_STAGING_PATH=/staging
     ports:
       - '8945:8945'
     volumes:
       - ./config:/config
       - /home/nux/Videos/ytdl-sub/:/downloads
+      # yt-dlp scratch + PyInstaller extraction. Shares a filesystem with
+      # /downloads, so yt-dlp's own finalising is a rename, not a copy, and
+      # orphaned .part files stay off the container layer.
+      - /mnt/d/Videos/.pinchflat-tmp:/tmp/pinchflat
+      # Download staging: fragments and the ffmpeg merge land on SSD instead of
+      # the spinning NTFS library disk. Deliberately cross-filesystem.
+      - /ssd/pinchflat-staging:/staging
