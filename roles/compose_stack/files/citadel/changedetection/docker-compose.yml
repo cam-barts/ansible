@@ -38,6 +38,13 @@ services:
         loki-max-backoff: "800ms"
         loki-timeout: "3s"
         keep-file: "true"
+        # keep-file WITHOUT these two is the pattern that hoarded 115GB of
+        # unrotated logs inside the loki plugin's rootfs. keep-file tells the
+        # driver to also write the local json.log, and with no size cap that
+        # file never rotates. du misses it unless you pass -x, because it lives
+        # behind the plugin mount.
+        max-size: "20m"
+        max-file: "3"
         loki-pipeline-stages: |
           - drop:
               expression: ".*Failed to connect to the bus.*"

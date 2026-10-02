@@ -12,13 +12,24 @@ ansible_become: true
 # divergence from citadel: warrig ships loki over the network, so small
 # batches (400) and a short timeout (1s).
 docker_daemon_config:
-  data-root: /home/docker
-  debug: true
+  # NO data-root key on purpose. It used to say /home/docker, the spinning
+  # disk. Docker now lives on the SSD at the default /var/lib/docker (sdb6),
+  # which took a daemon restart from 3m46s to 14s. Naming the old path here
+  # would move it back and orphan every container, image and volume.
+  #
+  # false, matching live: `true` turns on daemon debug logging on a host that
+  # already ships every container's stdout to Loki.
+  debug: false
   features:
     buildkit: true
   log-driver: loki
   log-opts:
+    # keep-file WITHOUT max-size/max-file is the 115GB unrotated-log pattern,
+    # and the role shallow-combines (no recursive=true) so log-opts is replaced
+    # wholesale. These two were live-only; losing them reintroduces the leak.
     keep-file: "true"
+    max-size: "50m"
+    max-file: "3"
     loki-batch-size: "400"
     loki-max-backoff: 800ms
     loki-retries: "2"

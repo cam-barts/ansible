@@ -5,10 +5,17 @@ ansible_become: true
 # /etc/docker/daemon.json by the adversarial review pass. citadel IS the
 # Loki host, so big batches (5000) and a longer timeout (3s) vs warrig.
 docker_daemon_config:
-  debug: true
+  # false, matching live. `true` would turn daemon debug logging on for a host
+  # that already ships every container's stdout to Loki.
+  debug: false
   log-driver: loki
   log-opts:
+    # keep-file WITHOUT max-size/max-file is the 115GB unrotated-log pattern.
+    # The role shallow-combines (no recursive=true), so log-opts is replaced
+    # wholesale: every key that must survive has to be named right here.
     keep-file: "true"
+    max-size: "20m"
+    max-file: "3"
     loki-batch-size: "5000"
     loki-max-backoff: 800ms
     loki-retries: "2"
