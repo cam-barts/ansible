@@ -1,33 +1,45 @@
 services:
   silverbullet:
-    # CURRENT STATE (2026-08-12): running the moving `v2-runtime-api` tag, and
-    # it is healthy. Resolves to sha256:747dbcce10dfd15a0663c4f192a161388793bc
-    # 377016bc0b1f36fe15a1da16f7 (built 2026-08-09).
+    # Pinned to stable 2.12.0 (2026-10-06), upgraded 2026-10-09 from the moving
+    # `v2-runtime-api` tag (then at 2.10.0-255, built 2026-09-15). As of 2.11 the
+    # default images bundle Chromium, so the runtime API that `sb lua` needs is in
+    # plain `:2.12.0`; the `-runtime-api` suffix is history (`:2.12.0-slim` is the
+    # Chromium-less one). Pinned on purpose: a moving tag already broke the runtime
+    # once (2.9.0-45, headless CDP `enable runtime` timeout -> `sb lua` 503s).
+    # Rollback: ghcr.io/silverbulletmd/silverbullet@sha256:a2fe4c456c6bacfc2053688a9321c379ae3cff72bbd229d386b9940fa31c6770
     #
-    # History: this was pinned to 2.9.0-runtime-api because `v2-runtime-api`
-    # had rolled to a 2026-07-01 build (2.9.0-45) whose headless-Chrome runtime
-    # was broken (CDP `enable runtime` timed out / the headless client's API
-    # fetches failed auth), so the runtime never became ready and `sb lua`
-    # 503'd. Upstream has since fixed that; the moving tag works again, so the
-    # pin was lifted and the old warn-off comment no longer applies.
-    #
-    # Caveat that still applies to either tag: first launch on a cold
-    # /space/.chrome-data can time out while it indexes the space (60s cap);
-    # just `docker compose restart silverbullet` once the profile has warmed.
-    # Stale Chrome SingletonLocks are auto-removed on boot.
-    #
-    # TRADE-OFF: a moving tag means the next `docker compose pull` can silently
-    # re-break the runtime the same way. Re-pin to the digest above if you want
-    # that to stop being possible.
-    # image: ghcr.io/silverbulletmd/silverbullet:2.9.0-runtime-api
-    image: ghcr.io/silverbulletmd/silverbullet:v2-runtime-api
+    # (The old cold-/space/.chrome-data caveat moved: profiles now live under
+    # /data, see the multi-space note below.)
+    image: ghcr.io/silverbulletmd/silverbullet:2.12.0
     restart: unless-stopped
     shm_size: '512m'
     # entrypoint: ["/sbin/tini", "--", "/entrypoint-wrapper.sh"]
-    environment:
-    - SB_USER={{ silverbullet_sb_user }}
-    - SB_AUTH_TOKEN={{ silverbullet_sb_auth_token }}
+    #
+    # MULTI-SPACE MODE since 2026-10-11. Accounts live in data/users.json, space
+    # config in data/spaces.json, server config in data/server.json; all three are
+    # managed through the Dashboard at /.dashboard (404 in the old legacy mode, so
+    # that endpoint is the one-line check for which mode you are in).
+    #
+    # SB_USER and SB_AUTH_TOKEN are GONE ON PURPOSE, not forgotten:
+    # boot.rs::detect() makes either one a REFUSE-TO-BOOT error once spaces.json
+    # exists ("Accounts now live in users.json, unset SB_USER"). Per-account API
+    # tokens from the Dashboard replace them. SB_REVISIONS is also gone; revisions
+    # are per-space config now (spaces.json `revisions: "managed"`).
+    #
+    # Both mounts are deliberate. The entrypoint prefers /data when both are
+    # present and logs "using /data, ignoring /space". /space stays mounted
+    # because spaces.json points the space at the ABSOLUTE path /space, which
+    # upstream calls "a deliberate external mount" (setup.rs). That is what keeps
+    # every sidecar's ./space mount and every host script's path unchanged: the
+    # 1.5G of markdown never moved.
+    #
+    # Chrome profiles now live at data/.chrome-data (one per user+space), NOT in
+    # the space any more. First boot on a cold profile reports the runtime as
+    # "starting" and /.runtime/lua 503s while it indexes the whole space; on this
+    # space that took ~7 min. Expected exactly once. force-reindex.sh knows the
+    # new path.
     volumes:
+      - ./data:/data
       - ./space:/space
       # - ./entrypoint-wrapper.sh:/entrypoint-wrapper.sh:ro
     ports:
@@ -81,10 +93,10 @@ services:
       # Secondary corpus: Cam's blog (Quartz markdown), indexed by reindex-blog.
       - SIDECAR_BLOG_DIR=/blog
       - SIDECAR_BLOG_INDEX_NAME=blog
-      # HTTP fallback creds — only used if SIDECAR_SPACE_DIR is ever unset.
+      # HTTP fallback creds, only used if SIDECAR_SPACE_DIR is ever unset. Bearer
+      # token only now: SB_USER is gone with single-space mode.
       - SB_URL=${SB_URL}
       - SB_AUTH_TOKEN=${SB_AUTH_TOKEN}
-      - SB_USER=${SB_USER}
     volumes:
       # The SB space, read-only — this is what enables filesystem mode.
       - ./space:/space:ro
@@ -135,3 +147,96 @@ services:
     # SB container reaches it as pdf-sidecar:8000 without this.
     ports:
       - "8391:8000"
+
+  # ---------------------------------------------------------------------
+  # Fast capture. A tiny PWA + write endpoint whose entire point is that it
+  # NEVER loads the space — SB's own client parses ~1MB of JS and indexes
+  # 24MB of markdown before it accepts a keystroke, which is unusable on a
+  # phone and gets worse as the space grows. This opens to a textarea in
+  # milliseconds, queues in IndexedDB, and PUTs each capture out of band as a
+  # NEW dated page (Inbox/<date>/<time>-<id>.md, SB's own Quick Note layout).
+  #
+  # Never edits an existing page: that's what keeps it clear of the `sb sync`
+  # conflict class. The client-supplied id makes the path deterministic, so a
+  # retried flush rewrites identical bytes — idempotent with no dedup store.
+  #
+  # Reaches SB in-network as silverbullet:3000, so the SB token never leaves
+  # the docker network and captures still land if BunkerWeb/Cloudflare are
+  # down. Public at https://capture.coder.cam behind USE_AUTH_BASIC.
+  # Zero-Dockerfile house pattern: stock uv image + PEP 723 header in main.py.
+  # ---------------------------------------------------------------------
+  capture:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    restart: unless-stopped
+    depends_on:
+      - silverbullet
+    environment:
+      - SB_URL=http://silverbullet:3000
+      - SB_AUTH_TOKEN=${SB_AUTH_TOKEN}
+      - CAPTURE_FOLDER=Inbox
+    volumes:
+      - ./capture:/app:ro
+      # Without this the container is UTC, so anything captured after 8pm EDT
+      # would file itself into tomorrow's dated folder. Same reason pdf-sidecar
+      # mounts it.
+      - /etc/localtime:/etc/localtime:ro
+    working_dir: /app
+    command: ["uv", "run", "--no-project", "/app/main.py"]
+    ports:
+      - "8392:8000"
+
+  # ---------------------------------------------------------------------
+  # Podcast transcript search. Indexes MinusPod transcripts into the same
+  # Meilisearch, one document per ~45s chunk so a hit deep-links to a
+  # timestamp rather than to a 90-minute file. Shares the `nomic` embedder
+  # with the silverbullet and blog indexes, so semantic and hybrid search
+  # behave identically across all three.
+  #
+  # Hourly, not the 15s poll the space indexer uses: transcripts only change
+  # when an episode finishes processing, and Meilisearch re-embeds only the
+  # documents whose content actually changed.
+  # ---------------------------------------------------------------------
+  podcast-indexer:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    restart: unless-stopped
+    depends_on:
+      - meilisearch
+    environment:
+      - MEILI_URL=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      - PODCAST_INDEX=podcasts
+      - PODCAST_INDEX_INTERVAL=3600
+      - MINUSPOD_DB=/minuspod-data/podcast.db
+      - PODCAST_VAULT=/vault/transcripts.db
+      # Public origin, not localhost:8077: the indexed `url` is what a SearXNG
+      # result links to, so it has to resolve from Cam's phone, not just this
+      # host. The feed key goes with it because MinusPod's feedAuth gates
+      # /episodes/ and a bare enclosure URL 401s (and repeated 401s feed
+      # BunkerWeb's BADBEHAVIOR ban counter).
+      - MINUSPOD_BASE=https://minuspod.coder.cam
+      - MINUSPOD_FEED_KEY=${MINUSPOD_FEED_KEY}
+      - OLLAMA_EMBED_URL=http://host.docker.internal:11434/api/embeddings
+      - UV_CACHE_DIR=/tmp/uv-cache
+      # stdout is a pipe here, so Python block-buffers it. Only `push` passes
+      # flush=True, so the pass's own status lines ("done", the prune result)
+      # sat in the buffer until the NEXT pass's pushes shoved them out an hour
+      # later. That makes the log read as if a pass hung. Cheaper than putting
+      # flush=True on every print.
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./sidecar:/sidecar:ro
+      - /home/nux/docker_services/minuspod/data:/minuspod-data:ro
+      # The only writable mount this container gets, and deliberately NOT
+      # inside minuspod/data: the transcript vault has to outlive the DB it is
+      # copied from, including a restore from a podcast-pre-upgrade-*.db.
+      - /home/nux/docker_services/minuspod/vault:/vault
+    working_dir: /sidecar
+    command: ["uv", "run", "--no-project", "--with", "httpx",
+              "/sidecar/podcast_indexer.py", "serve"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
