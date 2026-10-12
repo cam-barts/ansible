@@ -121,9 +121,19 @@ services:
   pdf-sidecar:
     build: ./pdf-sidecar
     restart: unless-stopped
+    # Runs as nux so the <Page>.pdf it writes into the space is owned by the same
+    # uid SilverBullet runs as (1000). Before 2026-10-11 this container ran as
+    # root, so every generated PDF landed root-owned inside a uid-1000 space:
+    # readable, but not writable or re-renderable by SB itself.
+    #
+    # No passwd entry exists for 1000 in the image, so HOME would be unset and
+    # lualatex's luaotfload font cache would have nowhere to go. HOME=/tmp fixes
+    # that; the build itself already happens in a tempfile.TemporaryDirectory().
+    user: "1000:1000"
     depends_on:
       - silverbullet
     environment:
+      - HOME=/tmp
       - SPACE_DIR=/space
       - EISVOGEL_TEMPLATE=eisvogel
       - DEFAULT_THEME=observatory
