@@ -55,6 +55,19 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.21
     restart: unless-stopped
+    # Added 2026-10-12. No service in this stack had any limit, and the host runs
+    # with swap effectively full (7.8 of 8.0 GiB), so an unbounded Meilisearch is
+    # a plausible contributor to the latency spikes seen during the UX audit.
+    # Sized against measured usage: ~86 MB of document store plus ~143 MB of
+    # float32 vectors (46.9k docs x 768 dims), so 2g is generous headroom rather
+    # than a squeeze. Compose v2 honours deploy.resources.limits outside swarm.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+        reservations:
+          memory: 512m
     environment:
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
       - MEILI_ENV=production
@@ -135,7 +148,9 @@ services:
     environment:
       - HOME=/tmp
       - SPACE_DIR=/space
-      - EISVOGEL_TEMPLATE=eisvogel
+      # Vendored template (pdf-sidecar/eisvogel.latex), not the bare name resolved
+      # from the floating pandoc/extra:latest base image. See its header comment.
+      - EISVOGEL_TEMPLATE=/app/eisvogel.latex
       - DEFAULT_THEME=observatory
       # Cap that drops pathological full-page scroll-captures. Legit before/after
       # comparison screenshots run ~2500-6300px tall, so 8000 keeps them while still
