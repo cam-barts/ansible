@@ -55,19 +55,42 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.21
     restart: unless-stopped
-    # Added 2026-10-12. No service in this stack had any limit, and the host runs
-    # with swap effectively full (7.8 of 8.0 GiB), so an unbounded Meilisearch is
-    # a plausible contributor to the latency spikes seen during the UX audit.
-    # Sized against measured usage: ~86 MB of document store plus ~143 MB of
-    # float32 vectors (46.9k docs x 768 dims), so 2g is generous headroom rather
-    # than a squeeze. Compose v2 honours deploy.resources.limits outside swarm.
+    # Added 2026-10-12, resized 2026-10-13. The original 2g was sized from
+    # LOGICAL data size (~86 MB of document store plus ~143 MB of float32
+    # vectors) and that was the wrong basis: it counts neither Meilisearch's own
+    # heap nor the LMDB page-cache working set. Measured under a full reindex,
+    # the 2g cap was pathological — cgroup `memory.current` pinned at 99.99% of
+    # the limit, `memory.events max` 1,571,426 hard-limit hits, `pgsteal` 97.4M
+    # pages, `pgmajfault` 198,450, and cgroup `io.pressure full avg10` 20.47,
+    # i.e. fully IO-stalled a fifth of the time. Push throughput collapsed from
+    # ~22 docs/s to ~2 docs/s with Meilisearch at 11% CPU and the embedder
+    # answering in 58 ms, so neither CPU nor Ollama was the constraint. It had
+    # also pushed 483 MiB of its own heap into host swap, making the limit a
+    # CONTRIBUTOR to the full-swap symptom it was partly meant to address.
+    #
+    # Resized against the real working set: ~1.8 GiB heap (1.28 GiB resident
+    # plus the 483 MiB that had been swapped out) and a 3.6 GiB LMDB that wants
+    # to be page-cacheable, with a reindex transiently holding live + staging
+    # (~7 GiB on disk). 10g covers that with room for index growth and is still
+    # a real bound; the host has 31 GiB available. memory-swap equal to memory
+    # (no container swap) is deliberate: a search engine paging its heap to a
+    # full host swap device is the behaviour being removed, and file pages are
+    # reclaimable without an OOM kill, so only the ~1.8 GiB of anon has to fit.
+    #
+    # CPU deliberately left at 2.0: measured at 11% during the rebuild, so it
+    # is not the binding constraint and there is nothing to justify changing.
+    # Compose v2 honours deploy.resources.limits outside swarm.
     deploy:
       resources:
         limits:
           cpus: "2.0"
-          memory: 2g
+          memory: 10g
         reservations:
           memory: 512m
+    # memory+swap total. Equal to the memory limit means no container swap, per
+    # the reasoning above. Lives here rather than under deploy: because
+    # deploy.resources has no swap key; compose maps this to HostConfig.MemorySwap.
+    memswap_limit: 10g
     environment:
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
       - MEILI_ENV=production
