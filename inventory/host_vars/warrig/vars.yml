@@ -190,6 +190,40 @@ borgmatic_excludes:
   # replaceable content deliberately not backed up. Missing here let it get
   # swept into the 2026-08-24 run (155.21 GB -> 476.45 GB dedup). Added 2026-08-25.
   - "/home/nux/data/*"
+  # --- 2026-10-26 backup hygiene audit --------------------------------------
+  # All rebuildable; ~200G that every new archive was re-reading. Same list as
+  # the rsnapshot template's 2026-10-26 block. minuspod/data/podcasts is
+  # deliberately NOT excluded (clipped episodes are hard to get back).
+  # Benchmark scratch, moved out of $HOME into git_local:
+  - "/home/nux/git_local/sb-index-opt-runs/*"
+  - "/home/nux/git_local/sb-bench/*"
+  # Build output. fnmatch * crosses "/", so this hits any target/ under
+  # git_local, which there is cargo output.
+  - "/home/nux/git_local/*/target/*"
+  - "/home/nux/git_local/duoanki/srs_app/build/*"
+  # Toolchains, SDKs, package caches. ~/.cargo is a symlink to
+  # .local/share/cargo, which "*/.cargo/*" above never matched.
+  - "/home/nux/.local/share/cargo/*"
+  - "/home/nux/.local/share/uv/tools/*"
+  - "/home/nux/.local/share/gradle/*"
+  - "/home/nux/.local/share/rustup/*"
+  - "/home/nux/.local/share/npm/*"
+  - "/home/nux/.local/share/yarn/*"
+  - "/home/nux/.local/share/go/*"
+  - "/home/nux/.local/share/nvim.bak/*"
+  - "/home/nux/.pub-cache/*"
+  - "/home/nux/flutter/*"
+  - "/home/nux/Android/sdk/*"
+  # App VM images, traces, rebuildable indexes and caches:
+  - "/home/nux/.config/Claude/vm_bundles/*"
+  - "/home/nux/.playwright-mcp/*"
+  - "/home/nux/.config/zotero-mcp/chroma_db.bak-*"
+  - "/home/nux/docker_services/minuspod/data/tmp/*"
+  - "/home/nux/docker_services/silverbullet/ux-traces/*"
+  - "/home/nux/docker_services/silverbullet/data/.chrome-data/*"
+  - "*/Cache/*"
+  - "*/Code Cache/*"
+  - "*/GPUCache/*"
 
 # Databases: none, deliberately. warrig runs plenty of containerised DBs
 # (immich_postgres, atuin-postgresql, hoppscotch-postgres, plausible_db,
@@ -285,9 +319,6 @@ compose_stacks:
   string-is:
     files:
       - { src: warrig/string-is/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
-  surrealdb:
-    files:
-      - { src: warrig/surrealdb/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
   webhooksite:
     dir: /home/nux/docker_services/webhook/webhook.site
     files:
@@ -326,5 +357,4 @@ silverbullet_minuspod_feed_key: "{{ vault_silverbullet_minuspod_feed_key }}"
 silverbullet_render_token: "{{ vault_silverbullet_render_token }}"
 silverbullet_sb_auth_token: "{{ vault_silverbullet_sb_auth_token }}"
 speedtest_app_key: "{{ vault_speedtest_app_key }}"
-surrealdb_password: "{{ vault_surrealdb_password }}"
 whisperlivekit_sb_auth_token: "{{ vault_whisperlivekit_sb_auth_token }}"

@@ -78,17 +78,18 @@ borgmatic_excludes:
   - "*/.local/share/Trash/*"
   - "*/tmp/*"
   - "*/.tmp/*"
-  # Garage object data + metadata: S3 has internal replication, config is
-  # what's worth backing up. Container compose dir itself stays included.
-  - "/home/nux/docker/garage/data/*"
-  - "/home/nux/docker/garage/meta/*"
-  # Loki / Prometheus / Grafana on-disk TSDB chunks, large, derivable from
-  # configured scrape targets; backing up config dirs is enough.
-  - "/home/nux/docker/monitoring/data/loki/*"
-  - "/home/nux/docker/monitoring/data/prometheus/*"
-  - "/home/nux/docker/monitoring/data/grafana/grafana.db-journal"
-  # changedetection screenshot snapshots: regenerable
-  - "/home/nux/docker/changedetection/datastore/Browserless/*"
+  # 2026-10-26: the previous garage/, monitoring/data/ and
+  # changedetection/datastore/ patterns matched nothing (the stack layout had
+  # moved), so ~14G of TSDB data was being backed up. Repointed at the real
+  # mounts. Windmill's Garage S3 store (docker/windmill/garage) is
+  # deliberately KEPT in the backup.
+  # Loki / Prometheus on-disk TSDB chunks: large, derivable, history not needed.
+  - "/home/nux/docker/monitoring/prometheus_data/*"
+  - "/home/nux/docker/monitoring/loki_data/*"
+  # Windmill worker dependency cache (torch, cudnn, pip, uv): 15G, rebuilt
+  # on demand by the workers.
+  - "/home/nux/docker/windmill/worker/cache/*"
+  - "/home/nux/.local/share/rustup/*"
 
 # Databases to dump. The before-create hook iterates this list, and its
 # presence is what makes the role install borgmatic-dump-dbs.sh /

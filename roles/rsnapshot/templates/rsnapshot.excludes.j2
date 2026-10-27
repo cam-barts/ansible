@@ -89,3 +89,64 @@
 /home/nux/docker_services/shortlink/shortpaste/
 /home/nux/docker_services/sorry_cypress/data/
 /home/nux/git_local/celestial/
+
+# --- 2026-10-26 backup hygiene audit ----------------------------------------
+# Everything here is rebuildable (build output, toolchains, caches, app VM
+# images, traces). Findings and sizes: /tmp/backup-audit/ reports of that date.
+# Full paths because of --relative anchoring (see the media block above).
+# minuspod/data/podcasts is deliberately NOT excluded: clipped episodes are
+# hard to get back.
+
+# warrig: benchmark scratch moved out of $HOME into git_local, not wanted
+/home/nux/git_local/sb-index-opt-runs/
+/home/nux/git_local/sb-bench/
+# warrig: build output (cargo target dirs, Flutter build). Not **/target/:
+# that would also match non-cargo directories named target.
+/home/nux/git_local/*/target/
+**/node_modules/
+/home/nux/git_local/duoanki/srs_app/build/
+**/__pycache__/
+# warrig: toolchains, SDKs and package caches
+/home/nux/.local/share/uv/tools/
+/home/nux/.local/share/gradle/
+/home/nux/.local/share/rustup/
+/home/nux/.local/share/cargo/
+/home/nux/.local/share/npm/
+/home/nux/.local/share/yarn/
+/home/nux/.local/share/go/
+/home/nux/.local/share/nvim.bak/
+/home/nux/.pub-cache/
+/home/nux/.npm/
+/home/nux/flutter/
+/home/nux/Android/sdk/
+# warrig: app images, caches and traces
+/home/nux/.config/Claude/vm_bundles/
+/home/nux/.playwright-mcp/
+/home/nux/.config/zotero-mcp/chroma_db.bak-*/
+/home/nux/docker_services/minuspod/data/tmp/
+/home/nux/docker_services/silverbullet/ux-traces/
+/home/nux/docker_services/silverbullet/data/.chrome-data/
+# Electron/Chromium caches (obsidian, discord, Claude, Morgen, ...)
+**/Cache/
+**/Code Cache/
+**/GPUCache/
+
+# citadel: Windmill dependency cache (torch, pip, uv) and rebuildable TSDBs.
+# windmill/garage is deliberately kept.
+/home/nux/docker/windmill/worker/cache/
+/home/nux/docker/monitoring/prometheus_data/
+/home/nux/docker/monitoring/loki_data/
+
+# Pis (pirate): toolchains, editor plugins, package caches
+/home/pirate/.rustup/
+/home/pirate/.cargo/registry/
+/home/pirate/.local/share/nvim/
+/home/pirate/.local/lib/
+/home/pirate/.npm/
+/home/pirate/.npm-global/
+/home/pirate/.wakatime/
+# billy-of-tea: ~50k throwaway certbot keys/CSRs (live certs are elsewhere)
+/home/pirate/nginx-proxy-manager/letsencrypt/keys/
+/home/pirate/nginx-proxy-manager/letsencrypt/csr/
+# wellerman: loose 2022 installer
+/home/pirate/gitlab-runner_armhf.deb
