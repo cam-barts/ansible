@@ -23,3 +23,11 @@ roles/compose_stack/files/warrig/dashy/conf.yml yaml[indentation]
 # the modes of directories that already exist on the hosts, and the point of
 # this role is byte/attr fidelity to what is live.
 roles/compose_stack/tasks/main.yml risky-file-permissions
+
+# LogQL recording rules: each expr is one query whose regex alternations
+# (known-vhost list, canary paths) cannot be wrapped without changing them.
+roles/compose_stack/files/citadel/monitoring/loki-rules/bunkerweb.yaml yaml[line-length]
+
+# Byte-faithful copy of the live moodle compose file (one long
+# POST_CONFIGURE_COMMANDS string); wrapping it would change the live file.
+roles/compose_stack/files/warrig/moodle/docker-compose.yml yaml[line-length]

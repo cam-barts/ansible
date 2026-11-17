@@ -1,0 +1,48 @@
+services:
+  ghostfolio:
+    image: ghostfolio/ghostfolio:3.57.0
+    restart: unless-stopped
+    # node PID 1 never reaps, so healthcheck curls pile up as zombies
+    init: true
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - TZ=America/New_York
+    ports:
+      - '3333:3333'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:3333/api/v1/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:15.19-alpine
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -d "$${POSTGRES_DB}" -U $${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.8.2-alpine
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    command: ['sh', '-c', 'redis-server --requirepass "$${REDIS_PASSWORD}"']
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --pass "$${REDIS_PASSWORD}" ping | grep PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5

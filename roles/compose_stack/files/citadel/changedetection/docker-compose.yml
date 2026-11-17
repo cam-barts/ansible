@@ -24,29 +24,19 @@ services:
       - SCREEN_WIDTH=1920
       - SCREEN_HEIGHT=1080
       - MAX_CONCURRENT_CHROME_PROCESSES=5
+      # server.py defaults LOG_LEVEL to DEBUG (per-CDP-message trace lines);
+      # that made this the #2 log source in Loki at ~37 MB/day.
+      - LOG_LEVEL=INFO
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
+    # json-file, not the loki plugin (Phase 5). Explicit rather than the
+    # daemon default so this service is off the plugin whatever order the
+    # cutover runs in. Its two drop rules (dbus noise, _request_retry) now
+    # live in alloy-journal/config.alloy, scoped to this service.
     logging:
-      driver: loki
+      driver: json-file
       options:
-        loki-url: "http://citadel.shadeking.cam.local:3100/loki/api/v1/push"
-        mode: "non-blocking"
-        loki-retries: "2"
-        loki-batch-size: "5000"
-        loki-max-backoff: "800ms"
-        loki-timeout: "3s"
-        keep-file: "true"
-        # keep-file WITHOUT these two is the pattern that hoarded 115GB of
-        # unrotated logs inside the loki plugin's rootfs. keep-file tells the
-        # driver to also write the local json.log, and with no size cap that
-        # file never rotates. du misses it unless you pass -x, because it lives
-        # behind the plugin mount.
         max-size: "20m"
         max-file: "3"
-        loki-pipeline-stages: |
-          - drop:
-              expression: ".*Failed to connect to the bus.*"
-          - drop:
-              expression: ".*_request_retry.*"

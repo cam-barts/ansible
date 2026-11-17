@@ -82,9 +82,9 @@ services:
 
   bw-db:
     image: mariadb:11
-    mem_limit: 2g
+    mem_limit: 3g
     # We set the max allowed packet size to avoid issues with large queries
-    command: --max-allowed-packet=67108864
+    command: --max-allowed-packet=268435456
     environment:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
       MYSQL_DATABASE: "db"

@@ -2,7 +2,8 @@ name: alloy-journal
 
 services:
   alloy:
-    image: grafana/alloy:latest
+    # Pinned 2026-11-14 to the digest that was running (verified identical).
+    image: grafana/alloy:v1.21.3
     container_name: alloy-journal
     restart: unless-stopped
     # Needs to read /var/log/journal, which is root:systemd-journal.
@@ -29,6 +30,12 @@ services:
       - /var/log/journal:/var/log/journal:ro
       - /run/log/journal:/run/log/journal:ro
       - /etc/machine-id:/etc/machine-id:ro
+      # Docker container logs (config.alloy, Phase 5). The socket is for
+      # discovery.docker only (container id, name, compose labels); the log
+      # lines themselves are read from the json-file logs, which only exist
+      # for json-file containers. Both hosts use the default data-root.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     # Port 12345 is deliberately not published: nothing needs to reach Alloy's
     # UI from the LAN, and an unpublished port cannot be reached around
     # BunkerWeb's auth.

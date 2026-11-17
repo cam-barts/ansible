@@ -1,0 +1,17 @@
+---
+# Tracks warrig's opnform compose stack byte-faithfully and reconciles its
+# containers to it: up -d by default, -e compose_stack_state=absent to bring
+# it down. Doctrine: roles/compose_stack/README.md. Imported from the live
+# files 2026-11-16.
+#
+#   ansible-playbook --check --diff playbooks/configure_compose_opnform.yml
+- name: Track the opnform compose stack
+  hosts: warrig
+  gather_facts: false
+  # The VARIABLE, not the become keyword: a play-level `become:` loses to
+  # the ansible_become host_var (repo README precedence trap).
+  vars:
+    ansible_become: false
+    compose_stack_name: opnform
+  roles:
+    - compose_stack

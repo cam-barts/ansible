@@ -1,0 +1,77 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: grafana
+    static_configs:
+      - targets: ['grafana:3000']
+    metric_relabel_configs:
+      # ~1.7k of Grafana's ~6.6k series are histogram buckets; nothing reads
+      # them (the Grafana metrics dashboards use only _count and gauges).
+      - source_labels: [__name__]
+        regex: 'grafana_.*_bucket'
+        action: drop
+  # Loki's own metrics: ingest rate, chunk flush reasons, query latency.
+  # Nothing watched Loki before this.
+  - job_name: loki
+    static_configs:
+      - targets: ['loki:3100']
+        labels:
+          instance: citadel
+  - job_name: node_exporter
+    static_configs:
+      - targets: ['192.168.1.88:9100']
+        labels:
+          instance: citadel
+      - targets: ['192.168.1.84:9100']
+        labels:
+          instance: black-pearl
+      - targets: ['192.168.1.66:9100']
+        labels:
+          instance: wellerman
+      - targets: ['192.168.1.82:9100']
+        labels:
+          instance: billy-of-tea
+      - targets: ['192.168.1.168:9100']
+        labels:
+          instance: warrig
+    metric_relabel_configs:
+      # 2160 series (every unit x 5 states). Keep only the failed state, which
+      # is the one worth alerting on; nothing queries the rest.
+      - source_labels: [__name__, state]
+        regex: 'node_systemd_unit_state;(active|activating|deactivating|inactive)'
+        action: drop
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          instance: citadel
+      - targets: ['warrig.shadeking.cam.local:8080']
+        labels:
+          instance: warrig
+      - targets: ['192.168.1.84:8080']
+        labels:
+          instance: black-pearl
+      - targets: ['192.168.1.66:8080']
+        labels:
+          instance: wellerman
+      - targets: ['192.168.1.82:8080']
+        labels:
+          instance: billy-of-tea
+    metric_relabel_configs:
+      # Unused and high-cardinality (~1.3k and ~1k series).
+      - source_labels: [__name__]
+        regex: 'container_(tasks_state|memory_failures_total)'
+        action: drop
+  - job_name: searxng
+    metrics_path: /metrics
+    basic_auth:
+      username: ""
+      password: {{ searxng_metrics_password }}
+    static_configs:
+      - targets: ['192.168.1.88:8214']
+        labels:
+          instance: citadel

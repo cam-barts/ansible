@@ -1,0 +1,16 @@
+services:
+  actual-server:
+    image: actualbudget/actual-server:26.8.1-alpine
+    restart: unless-stopped
+    environment:
+      - TZ=America/New_York
+    ports:
+      - '5006:5006'
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'node src/scripts/health-check.js']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

@@ -32,5 +32,6 @@ cadvisor_container_spec:
        if (cadvisor_networks | length > 0 and not cadvisor_network_mode) else omit }}
   command: >-
     {{ (( ['--docker_only=true'] if cadvisor_docker_only else [] )
-       + ( ['--port=' ~ cadvisor_port] if cadvisor_network_mode == 'host' else [] ))
+       + ( ['--port=' ~ cadvisor_port] if cadvisor_network_mode == 'host' else [] )
+       + cadvisor_extra_args)
        | default(omit, true) }}

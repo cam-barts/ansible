@@ -1,0 +1,20 @@
+# Only ollama runs here. open-webui and the mcpo MCP servers (karakeep,
+# obsidian) were retired: they were already down, and the obsidian image no
+# longer builds. Their data dirs (webui-data, Dockerfile.mcpo.*) are left in
+# place on warrig, untracked.
+name: ollama-gpt
+services:
+  ollama:
+    volumes:
+      - ./ollama-data/:/root/.ollama
+    ports:
+      - 11434:11434
+    image: ollama/ollama
+    environment:
+      # One slot only. Ollama sizes the KV cache as num_ctx * num_parallel, so
+      # the default was reserving several times the context actually needed and
+      # pushing qwen3:8b partly onto the CPU on this 8GB card.
+      - OLLAMA_NUM_PARALLEL=1
+    restart: unless-stopped
+    devices:
+      - nvidia.com/gpu=all

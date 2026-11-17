@@ -1,0 +1,75 @@
+services:
+  minuspod:
+    image: ttlequals0/minuspod:${MINUSPOD_VERSION:-stable}
+    container_name: minuspod
+    # Published on the LAN so BunkerWeb on citadel can reach it as
+    # http://warrig.shadeking.cam.local:8077 (siblings bind the same way).
+    # The loopback-only gate is gone, so the app's own auth is now load-bearing:
+    # an app password guards /ui and /api/v1, and feedAuthEnabled guards
+    # /<slug> and /episodes/ with a key. Both are set - see .env.
+    ports:
+      - "8077:8000"
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      # Ollama runs in its own compose project, published on the host at 11434.
+      - "host.docker.internal:host-gateway"
+    environment:
+      - LLM_PROVIDER=ollama
+      - OPENAI_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_MODEL=qwen3:8b
+      - WHISPER_MODEL=small
+      # Transcription is served by whisperlivekit (Parakeet) over the OpenAI
+      # API, so MinusPod must not initialise a local CUDA context: it was
+      # holding ~600MB of VRAM that qwen3:8b needs to stay fully on the GPU.
+      - WHISPER_DEVICE=cpu
+      # int8 keeps faster-whisper under ~1GB so it coexists with qwen3:8b and
+      # the whisperlivekit container already holding 1.5GB on the 3070 Ti.
+      - WHISPER_COMPUTE_TYPE=int8
+      - WHISPER_LANGUAGE=en
+      # Drives the enclosure URLs written into every feed, so it must be the
+      # public origin or Pocket Casts fetches audio from a host it can't reach.
+      - BASE_URL=https://minuspod.coder.cam
+      - MINUSPOD_MASTER_PASSPHRASE=${MINUSPOD_MASTER_PASSPHRASE}
+      # Left false deliberately: BunkerWeb terminates TLS and proxies to this
+      # container over plain http, so a Secure cookie would never be sent back.
+      # HttpOnly + SameSite=Strict still apply.
+      - SESSION_COOKIE_SECURE=false
+      # One hop in front: BunkerWeb. It rewrites X-Forwarded-For to the real
+      # client, so trusting a single proxy gives correct IPs in auth_failures.
+      - MINUSPOD_TRUSTED_PROXY_COUNT=1
+      - MAX_AUDIO_DOWNLOAD_MB=500
+      # Episode downloads and ffmpeg chunk extractions go through tempfile, which
+      # defaults to /tmp INSIDE the container, i.e. the writable layer on
+      # /var/lib/docker. That filesystem is separate, 98G, and has run to 100%
+      # today. ./data is a bind mount on /home (760G free), so keep the churn there.
+      - TMPDIR=/app/data/tmp
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER

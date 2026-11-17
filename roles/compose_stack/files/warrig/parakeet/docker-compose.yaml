@@ -1,0 +1,59 @@
+# Deployment for parakeet-service. Code lives in ~/git_local/parakeet-service.
+#
+# Port 8070 while whisperlivekit still holds 8069. The two coexist by design:
+# point MinusPod at this first, keep dictation on WLK, and only move the
+# whisper.coder.cam vhost once streaming has been used in anger for a week.
+name: parakeet
+services:
+  parakeet:
+    build:
+      context: /home/nux/git_local/parakeet-service
+      args:
+        VARIANT: ${VARIANT:-gpu}
+    image: parakeet:${VARIANT:-gpu}
+    container_name: parakeet
+    restart: unless-stopped
+    init: true
+    # 2026-09-08: a sustained MinusPod backfill (32 feeds auto-processing plus a
+    # 111-episode batch) grew this to 21.9 GB RSS, exhausted 62 GB of RAM, filled
+    # all 8 GB of swap and put warrig into swap thrash -- load 94, io pressure 98%,
+    # CPU pressure ~0. Idle RSS is ~10 MB (the model unloads on IDLE_TIMEOUT_SECS),
+    # so that growth was not a working set. memswap_limit MUST equal mem_limit:
+    # without it the container may use mem_limit again in swap, which is the exact
+    # thing that took the host down. On OOM the container is killed and
+    # restart:unless-stopped brings it back; MinusPod retries the episode.
+    mem_limit: 12g
+    memswap_limit: 12g
+    ports:
+      - "${PORT:-8070}:8000"
+    # CDI, matching ollama-gpt. /etc/cdi/nvidia.yaml has a real `name: all` device.
+    # WLK's `runtime: nvidia` is the older pre-CDI form.
+    devices:
+      - nvidia.com/gpu=all
+    volumes:
+      # Composed by stage-model.sh: HF weights hardlinked (NOT symlinked, those
+      # dangle inside the mount) plus nemo128.onnx, which the loader needs and the
+      # HuggingFace export does not ship.
+      - /home/nux/git_local/parakeet-service/models/parakeet-tdt-0.6b-v2:/models/parakeet:ro
+    environment:
+      - BATCH_DEVICE=${BATCH_DEVICE:-cuda}
+      - BATCH_QUANT=${BATCH_QUANT:-fp32}
+      - STREAM_DEVICE=${STREAM_DEVICE:-cpu}
+      - STREAM_QUANT=${STREAM_QUANT:-int8}
+      # 60, not 240: 240 OOMs the encoder on an 8 GB card and 60 measured faster.
+      - CHUNK_SECONDS=${CHUNK_SECONDS:-60}
+      - IDLE_TIMEOUT_SECS=${IDLE_TIMEOUT_SECS:-1200}
+      - STREAM_IDLE_TIMEOUT_SECS=${STREAM_IDLE_TIMEOUT_SECS:-0}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-256}
+      - AUTH_TOKEN=${AUTH_TOKEN:-}
+      - SB_URL=${SB_URL:-}
+      - SB_AUTH_TOKEN=${SB_AUTH_TOKEN:-}
+      - SB_TARGET_FOLDER=${SB_TARGET_FOLDER:-Inbox}
+      - RUST_LOG=${RUST_LOG:-info}
+    logging:
+      # The daemon default on warrig is the loki driver, which leaves `docker logs`
+      # empty. Pin json-file so debugging does not have to go through Grafana.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

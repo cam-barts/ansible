@@ -1,0 +1,19 @@
+# Paywall-bypass proxy (everywall/ladder), 12ft.io replacement.
+# Upstream ships no armv7 image, so the image is cross-compiled on warrig from
+# upstream main (CGO_ENABLED=0 GOARCH=arm GOARM=7) onto distroless static and
+# loaded here with `docker save | ssh ... docker load`. pull_policy: never keeps
+# compose from trying to pull a tag that exists only locally.
+services:
+  ladder:
+    container_name: ladder
+    image: ladder:main-d8f8ce4-armv7
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "8088:8080"
+    environment:
+      # Upstream ruleset is fetched from GitHub at startup.
+      - RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+      # Keep reading history out of promtail/Loki.
+      - LOG_URLS=false
+    mem_limit: 128m

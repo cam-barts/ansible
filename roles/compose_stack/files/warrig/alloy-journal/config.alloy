@@ -19,6 +19,37 @@ loki.write "default" {
   }
 }
 
+// Alloy's own metrics, pushed to Prometheus (its remote-write receiver is on)
+// so a stuck shipper is visible without publishing Alloy's 127.0.0.1-only
+// HTTP port. Grafana alert "Alloy Not Shipping" watches these.
+prometheus.exporter.self "alloy" { }
+
+prometheus.scrape "alloy" {
+  targets         = prometheus.exporter.self.alloy.targets
+  scrape_interval = "60s"
+  forward_to      = [prometheus.relabel.alloy.receiver]
+}
+
+prometheus.relabel "alloy" {
+  forward_to = [prometheus.remote_write.citadel.receiver]
+
+  rule {
+    target_label = "instance"
+    replacement  = string.to_lower(constants.hostname)
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "alloy"
+  }
+}
+
+prometheus.remote_write "citadel" {
+  endpoint {
+    url = "http://192.168.1.88:9090/api/v1/write"
+  }
+}
+
 loki.relabel "journal" {
   // Only used to export .rules to loki.source.journal below; nothing is
   // forwarded from here directly.
@@ -57,9 +88,21 @@ loki.relabel "journal" {
   // Take the host label from the journal itself rather than hardcoding it, so
   // it matches whatever the Docker loki driver already emits on this machine
   // (currently "Warrig" on warrig, "citadel" on citadel).
+  // Lowercased (Phase 5 decision, 2026-11-14): warrig's hostname is "Warrig",
+  // Prometheus says instance="warrig", and the docker pipeline below lowercases
+  // too, so every Loki stream from a host agrees with Prometheus.
   rule {
     source_labels = ["__journal__hostname"]
     target_label  = "host"
+    action        = "lowercase"
+  }
+
+  // journald priority (emerg..debug, 8 values) as `level`, so host logs stop
+  // reading detected_level="unknown" and the dashboards' error panels cover
+  // them. Bounded, so fine as a label.
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
   }
 
   rule {
@@ -84,4 +127,125 @@ loki.source.journal "read" {
   // dump hours of backlog into Loki in one burst.
   max_age = "1h"
   path    = "/var/log/journal"
+}
+
+// ---------------------------------------------------------------------------
+// Docker container logs (Phase 5: replaces the Docker loki logging-driver
+// plugin). Reproduces the plugin's label contract exactly: host,
+// compose_project, compose_service, container_name, source. `filename` is
+// deliberately not shipped; Loki derives service_name from container_name on
+// its own, as it does for the plugin's streams today.
+//
+// Why files and not loki.source.docker: during the transition some
+// containers are still on the loki driver, and they must not be shipped twice.
+// discovery.docker exposes NO log-driver meta label (verified 2026-11-14 on
+// v1.21.3), and loki.source.docker happily reads loki-driver containers through
+// the API (keep-file / dual logging), backfill included: a dry run shipped 295
+// duplicate lines from one loki-driver container in under a minute. A
+// <id>-json.log under /var/lib/docker/containers exists only for json-file
+// containers (loki-driver ones have an empty LogPath), so tailing that file
+// filters by driver by construction, with no per-container opt-in label.
+// ---------------------------------------------------------------------------
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_id"]
+    target_label  = "__path__"
+    replacement   = "/var/lib/docker/containers/$1/$1-json.log"
+  }
+
+  // Lowercase on purpose: warrig's hostname is "Warrig", Prometheus says
+  // instance="warrig", and Cam chose to match Prometheus at cutover.
+  // No source_labels, so this rule always fires.
+  rule {
+    target_label = "host"
+    replacement  = string.to_lower(constants.hostname)
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container_name"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+
+  // discovery.docker emits one target per container x network x port. Drop
+  // the per-network/per-port meta labels so a container's targets collapse to
+  // one identical label set, and its file is read once.
+  rule {
+    regex  = "__meta_docker_(network|port)_.*"
+    action = "labeldrop"
+  }
+}
+
+// Emits only paths that exist on disk, i.e. json-file containers.
+local.file_match "containers" {
+  path_targets = discovery.relabel.containers.output
+}
+
+loki.source.file "containers" {
+  targets    = local.file_match.containers.targets
+  forward_to = [loki.process.containers.receiver]
+
+  // tail_from_end stays false (read new files from the start). It cannot tell
+  // "Alloy's first start" from "container just recreated": both have no
+  // position, and true would lose a fresh container's first lines until the
+  // next discovery + file_match sync (up to ~70s at defaults), which is
+  // exactly the startup/crash output you want. Cost: the FIRST start backfills
+  // the few containers already on json-file (<= max-size x max-file each).
+  // Positions persist in alloy-data, so later restarts resume, not replay.
+}
+
+loki.process "containers" {
+  forward_to = [loki.write.default.receiver]
+
+  // Unwraps {"log":..,"stream":..,"time":..}: the line becomes `log`, the
+  // timestamp the container's, and `stream` becomes a label.
+  stage.docker { }
+
+  // json-file keeps each line's trailing newline; the plugin did not ship it.
+  // Strip it so line filters and pattern queries match as they do today.
+  stage.replace {
+    expression = "(\\n)$"
+    replace    = ""
+  }
+
+  stage.labels {
+    values = { source = "stream" }
+  }
+
+  stage.label_drop {
+    values = ["stream", "filename"]
+  }
+
+  stage.decolorize { }
+
+  // Ported verbatim from sockpuppetbrowser's loki-pipeline-stages in
+  // citadel/changedetection/docker-compose.yml, scoped to that service only.
+  stage.match {
+    selector = "{compose_project=\"changedetection\", compose_service=\"sockpuppetbrowser\"}"
+
+    stage.drop {
+      expression = ".*Failed to connect to the bus.*"
+    }
+
+    stage.drop {
+      expression = ".*_request_retry.*"
+    }
+  }
 }

@@ -65,7 +65,7 @@ See `defaults/main.yml`. The per-host stack catalog lives in
 `inventory/host_vars/<host>/vars.yml` as `compose_stacks`, a dict keyed by
 stack name, plus a single `compose_stack_root`. An entry only carries what
 deviates from convention: `project` defaults to the dict key (never the
-directory basename — webhooksite's dir is `webhook/webhook.site`), `dir`
+directory basename), `dir`
 defaults to `<compose_stack_root>/<name>`, `owner`/`group` default to the
 connecting user. The `files` list of `{src, dest, mode}` is always explicit.
 Secrets render from passthrough vars

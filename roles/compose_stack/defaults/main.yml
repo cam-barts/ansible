@@ -9,8 +9,7 @@
 # Resolved lazily at use time, so defining these here is safe even though the
 # inputs only exist once a playbook and host_vars are in play. Per-stack
 # entries only carry what deviates from convention:
-#   project -> the dict key (the stack name; NEVER the directory basename --
-#              webhooksite's dir is webhook/webhook.site, its project isn't)
+#   project -> the dict key (the stack name; NEVER the directory basename)
 #   dir     -> {{ compose_stack_root }}/<name>  (root set once per host)
 #   owner/group -> the connecting user, who owns every stack dir in the lab
 compose_stack_def: "{{ compose_stacks[compose_stack_name] }}"
@@ -25,3 +24,11 @@ compose_stack_group: "{{ compose_stack_def.group | default(compose_stack_owner) 
 # removed, volumes kept), stopped and restarted also valid. Override per run:
 #   ansible-playbook playbooks/configure_compose_<stack>.yml -e compose_stack_state=absent
 compose_stack_state: present
+
+# Passed to docker_compose_v2 `recreate`. auto = recreate only containers whose
+# config differs from the compose file. `-e compose_stack_state=restarted` is
+# `docker compose restart`, which keeps the container and so its log driver;
+# a daemon-level default change (log-driver, log-opts) is not a config diff
+# either. To move a stack onto a new daemon default, run with
+#   -e compose_stack_recreate=always
+compose_stack_recreate: auto

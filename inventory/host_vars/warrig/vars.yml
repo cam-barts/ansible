@@ -22,19 +22,14 @@ docker_daemon_config:
   debug: false
   features:
     buildkit: true
-  log-driver: loki
+  # Phase 5 (2026-11-16): loki plugin -> json-file; alloy-journal tails the
+  # files into Loki (docs/observability-phase5-runbook.md). keep-file and the
+  # loki-* keys had to go: json-file rejects unknown opts and dockerd would
+  # refuse to start. log-opts is replaced wholesale (shallow combine).
+  log-driver: json-file
   log-opts:
-    # keep-file WITHOUT max-size/max-file is the 115GB unrotated-log pattern,
-    # and the role shallow-combines (no recursive=true) so log-opts is replaced
-    # wholesale. These two were live-only; losing them reintroduces the leak.
-    keep-file: "true"
     max-size: "50m"
     max-file: "3"
-    loki-batch-size: "400"
-    loki-max-backoff: 800ms
-    loki-retries: "2"
-    loki-timeout: 1s
-    loki-url: http://citadel.shadeking.cam.local:3100/loki/api/v1/push
     mode: non-blocking
   runtimes:
     nvidia:
@@ -58,6 +53,10 @@ cadvisor_docker_only: false
 cadvisor_network_mode: host
 cadvisor_publish_port: false
 cadvisor_boot_fix: true
+# gcr.io stopped at v0.52.1; amd64 hosts take the ghcr.io releases (Phase 5,
+# 2026-11-16, once dockerd left the loki log driver).
+cadvisor_image: ghcr.io/google/cadvisor
+cadvisor_version: v0.60.6
 
 # --- borgmatic --------------------------------------------------------------
 # Per-host values for roles/borgmatic. Everything else (paths, ntfy, retention,
@@ -238,6 +237,10 @@ borgmatic_excludes:
 # live captures 2026-08-19; secret values live in vault.yml alongside.
 compose_stack_root: /home/nux/docker_services
 compose_stacks:
+  actual:
+    files:
+      - { src: warrig/actual/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/actual/.env.j2, dest: .env, mode: "0600" }
   alloy-journal:
     files:
       - { src: warrig/alloy-journal/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
@@ -272,6 +275,10 @@ compose_stacks:
   flatnotes:
     files:
       - { src: warrig/flatnotes/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+  ghostfolio:
+    files:
+      - { src: warrig/ghostfolio/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/ghostfolio/.env.j2, dest: .env, mode: "0600" }
   hoarder:
     files:
       - { src: warrig/hoarder/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
@@ -293,12 +300,33 @@ compose_stacks:
   metube:
     files:
       - { src: warrig/metube/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  minuspod:
+    files:
+      - { src: warrig/minuspod/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+      - { src: warrig/minuspod/.env.j2, dest: .env, mode: "0600" }
+  moodle:
+    files:
+      - { src: warrig/moodle/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/moodle/.env.j2, dest: .env, mode: "0600" }
+      - { src: warrig/moodle/config/zz-opcache.ini, dest: config/zz-opcache.ini, mode: "0644" }
+      - { src: warrig/moodle/config/zz-prod.conf, dest: config/zz-prod.conf, mode: "0644" }
   morss:
     files:
       - { src: warrig/morss/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
   ollama-gpt:
     files:
-      - { src: warrig/ollama-gpt/docker-compose.yml.j2, dest: docker-compose.yml, mode: "0640" }
+      - { src: warrig/ollama-gpt/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+  opnform:
+    files:
+      - { src: warrig/opnform/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
+      - { src: warrig/opnform/.env.j2, dest: .env, mode: "0600" }
+      - { src: warrig/opnform/api/.env.j2, dest: api/.env, mode: "0600" }
+      - { src: warrig/opnform/client/.env.j2, dest: client/.env, mode: "0600" }
+      - { src: warrig/opnform/docker/nginx.conf, dest: docker/nginx.conf, mode: "0644" }
+  parakeet:
+    files:
+      - { src: warrig/parakeet/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
+      - { src: warrig/parakeet/.env.j2, dest: .env, mode: "0600" }
   pinchflat:
     files:
       - { src: warrig/pinchflat/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
@@ -319,16 +347,14 @@ compose_stacks:
   string-is:
     files:
       - { src: warrig/string-is/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
-  webhooksite:
-    dir: /home/nux/docker_services/webhook/webhook.site
+  webhook-tester:
+    dir: /home/nux/docker_services/webhook/webhook-tester
     files:
-      - { src: warrig/webhooksite/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
-  whisperlivekit:
-    files:
-      - { src: warrig/whisperlivekit/docker-compose.yaml, dest: docker-compose.yaml, mode: "0644" }
-      - { src: warrig/whisperlivekit/.env.j2, dest: .env, mode: "0640" }
+      - { src: warrig/webhook-tester/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
 
 # Secret passthroughs for compose_stack templates; values live in vault.yml.
+actual_actual_server_password: "{{ vault_actual_actual_server_password }}"
+actual_simplefin_setup_token: "{{ vault_actual_simplefin_setup_token }}"
 ansible_semaphore_access_key_encryption: "{{ vault_ansible_semaphore_access_key_encryption }}"
 ansible_semaphore_admin_password: "{{ vault_ansible_semaphore_admin_password }}"
 ansible_semaphore_db_pass: "{{ vault_ansible_semaphore_db_pass }}"
@@ -337,6 +363,11 @@ atuin_db_password: "{{ vault_atuin_db_password }}"
 dashy_admin_hash: "{{ vault_dashy_admin_hash }}"
 flatnotes_password: "{{ vault_flatnotes_password }}"
 flatnotes_secret_key: "{{ vault_flatnotes_secret_key }}"
+ghostfolio_access_token_salt: "{{ vault_ghostfolio_access_token_salt }}"
+ghostfolio_database_url: "{{ vault_ghostfolio_database_url }}"
+ghostfolio_jwt_secret_key: "{{ vault_ghostfolio_jwt_secret_key }}"
+ghostfolio_postgres_password: "{{ vault_ghostfolio_postgres_password }}"
+ghostfolio_redis_password: "{{ vault_ghostfolio_redis_password }}"
 hoarder_meili_master_key: "{{ vault_hoarder_meili_master_key }}"
 hoarder_nextauth_secret: "{{ vault_hoarder_nextauth_secret }}"
 hoarder_openai_api_key: "{{ vault_hoarder_openai_api_key }}"
@@ -349,12 +380,21 @@ hoppscotch_postgres_password: "{{ vault_hoppscotch_postgres_password }}"
 hoppscotch_session_secret: "{{ vault_hoppscotch_session_secret }}"
 immich_db_password: "{{ vault_immich_db_password }}"
 kutt_jwt_secret: "{{ vault_kutt_jwt_secret }}"
-ollama_gpt_karakeep_api_key: "{{ vault_ollama_gpt_karakeep_api_key }}"
-ollama_gpt_obsidian_api_key: "{{ vault_ollama_gpt_obsidian_api_key }}"
+minuspod_minuspod_app_password: "{{ vault_minuspod_minuspod_app_password }}"
+minuspod_minuspod_feed_auth_key: "{{ vault_minuspod_minuspod_feed_auth_key }}"
+minuspod_minuspod_master_passphrase: "{{ vault_minuspod_minuspod_master_passphrase }}"
+moodle_db_pass: "{{ vault_moodle_db_pass }}"
+moodle_moodle_password: "{{ vault_moodle_moodle_password }}"
+moodle_smtp_password: "{{ vault_moodle_smtp_password }}"
+opnform_api_app_key: "{{ vault_opnform_api_app_key }}"
+opnform_api_front_api_secret: "{{ vault_opnform_api_front_api_secret }}"
+opnform_api_jwt_secret: "{{ vault_opnform_api_jwt_secret }}"
+opnform_client_nuxt_api_secret: "{{ vault_opnform_client_nuxt_api_secret }}"
+opnform_db_password: "{{ vault_opnform_db_password }}"
+parakeet_sb_auth_token: "{{ vault_parakeet_sb_auth_token }}"
 pwndrop_secret_path: "{{ vault_pwndrop_secret_path }}"
 silverbullet_meili_master_key: "{{ vault_silverbullet_meili_master_key }}"
 silverbullet_minuspod_feed_key: "{{ vault_silverbullet_minuspod_feed_key }}"
 silverbullet_render_token: "{{ vault_silverbullet_render_token }}"
 silverbullet_sb_auth_token: "{{ vault_silverbullet_sb_auth_token }}"
 speedtest_app_key: "{{ vault_speedtest_app_key }}"
-whisperlivekit_sb_auth_token: "{{ vault_whisperlivekit_sb_auth_token }}"

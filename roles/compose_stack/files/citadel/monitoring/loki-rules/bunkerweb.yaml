@@ -1,0 +1,41 @@
+# Loki ruler recording rules for the BunkerWeb Blocking Dashboard.
+# Tenant is "fake" (auth disabled); mounted at /tmp/loki/rules/fake/bunkerweb.yaml.
+# No client_ip label anywhere: per-IP views stay on raw Loki.
+# Every expr counts [1m] offset 1m: the previous complete minute. Without the
+# offset, lines reaching Loki after an evaluation (shipper batching) were never
+# counted; bunkerweb:responses read ~3% under the raw query. Loki 3.7 has no
+# ruler evaluation-delay setting, so the offset lives in the queries.
+groups:
+  - name: bunkerweb
+    interval: 1m
+    rules:
+      - record: bunkerweb:access_denied:count1m
+        expr: |-
+          sum by (reason) (count_over_time({compose_service="bunkerweb"} |~ `\[ACCESS\].*denied access from` | regexp `denied access from (?P<reason>\w+)(?: : (?P<kind>IP|UA))?` | label_format reason=`{{ if eq .reason "blacklist" }}{{ .reason }}_{{ lower .kind }}{{ else }}{{ .reason }}{{ end }}` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:badbehavior_bans:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |= `[BADBEHAVIOR] detected` |= `ban for` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:modsec_denied:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |= `[error]` |= `ModSecurity: Access denied` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:banned_repeat:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |~ `\[ACCESS\].*is banned with reason` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:wp_login_probes:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |= `wp-login.php HTTP` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:badbehavior_counter:count1m
+        expr: |-
+          sum by (direction) (count_over_time({compose_service="bunkerweb"} |~ `\[BADBEHAVIOR\] (increased|decreased) counter` | regexp `\[BADBEHAVIOR\] (?P<direction>increased|decreased) counter` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:unban:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |~ `\[API\].*unban` | __error__=`` [1m] offset 1m))
+      - record: bunkerweb:responses:count1m
+        expr: |-
+          sum by (vhost, status) (count_over_time({compose_service="bunkerweb", source="stdout"} | pattern `<vhost> <addr> <user> <rid> <dash> [<t>] "<req>" <status> <bytes> "<ref>" "<ua>"` | __error__=`` | label_format vhost=`{{ if eq (regexReplaceAll "^((actual|ansible|apprise|babybuddy|bin|blaze|bullet|bunkerweb|capture|changedetection|cyberchef|draw|flatnotes|form|format|fulltext|ghostfolio|grafana|hoarder|hoppscotch-admin|hoppscotch-backend|hoppscotch|immich|jellyfin|meilisearch|minuspod|morss|ntfy|paste|pdf|pinchflat|searx|seerr|surreal|tts|tw|vault|wakapi|webdav|webhook|wishlist|www)[.]coder[.]cam|coder[.]cam|(atuin|citadel|files|gastown|metube|portainer|s3-browser|s3|speedtest|windmill|www)[.]shadeking[.]cam|shadeking[.]cam|(www[.])?tldr[.]cam|bwapi)$" .vhost "") "" }}{{ .vhost }}{{ else }}other{{ end }}` [1m] offset 1m))
+      - record: bunkerweb:canary_hits:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |~ `/\.env|/\.git|/\.aws/|/\.s3cfg|/vendor/phpunit|eval-stdin\.php|/actuator/env|/actuator/heapdump|/cgi-bin/|etc/passwd|etc%2Fpasswd|/phpmyadmin|/phpMyAdmin|/shell\.php|/alfa\.php|/wso\.php|/c99\.php|/wp-login|/wp-admin|/wp-includes|/wp-content|/xmlrpc\.php` | regexp `^(?P<vhost>\S+) (?P<ip>\S+) - \S+ - \[[^\]]+\] "(?P<m>\S+) (?P<path>[^" ]*)[^"]*" (?P<status>\d{3}) ` | ip != "" | ip != "108.28.186.44" | ip !~ `(10|127|172\.(1[6-9]|2[0-9]|3[01])|192\.168)\..*` [1m] offset 1m))
+      - record: bunkerweb:banned_events:count1m
+        expr: |-
+          sum(count_over_time({compose_service="bunkerweb"} |= `is banned for` [1m] offset 1m))

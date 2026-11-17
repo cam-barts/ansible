@@ -51,6 +51,9 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
       - MODE=server
+      # Plain (uncolored) log lines: ANSI codes made every line unparseable for
+      # Loki level detection (detected_level=unknown). tracing honors NO_COLOR.
+      - NO_COLOR=1
     depends_on:
       db:
         condition: service_healthy
@@ -71,6 +74,9 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
       - MODE=worker
+      # Plain (uncolored) log lines: ANSI codes made every line unparseable for
+      # Loki level detection (detected_level=unknown). tracing honors NO_COLOR.
+      - NO_COLOR=1
       - WORKER_GROUP=default
     depends_on:
       db:
@@ -102,6 +108,9 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
       - MODE=worker
+      # Plain (uncolored) log lines: ANSI codes made every line unparseable for
+      # Loki level detection (detected_level=unknown). tracing honors NO_COLOR.
+      - NO_COLOR=1
       - WORKER_GROUP=native
       - NUM_WORKERS=2
       - NATIVE_MODE=true
@@ -126,6 +135,9 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:{{ windmill_db_password }}@db/windmill?sslmode=disable
       - MODE=worker
+      # Plain (uncolored) log lines: ANSI codes made every line unparseable for
+      # Loki level detection (detected_level=unknown). tracing honors NO_COLOR.
+      - NO_COLOR=1
       - WORKER_GROUP=reports
       # - NUM_WORKERS=2
     depends_on:

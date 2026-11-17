@@ -72,5 +72,6 @@
     project_src: "{{ compose_stack_dir }}"
     project_name: "{{ compose_stack_project }}"
     state: "{{ compose_stack_state }}"
+    recreate: "{{ compose_stack_recreate }}"
     pull: missing
   when: compose_stack_def.reconcile | default(true)

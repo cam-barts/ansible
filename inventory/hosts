@@ -41,11 +41,11 @@ archlinux
 
 # cAdvisor container hosts. The Pis publish a port; warrig runs it in the
 # host network namespace so firewalld can scope 8080 to citadel (see
-# roles/cadvisor/README.md). citadel stays out of this group: its cAdvisor is
-# reached by container name over the monitoring_default docker network and
-# has no host port at all.
+# roles/cadvisor/README.md). citadel's has no host port at all: Prometheus
+# reaches it by container name over the monitoring_default docker network.
 [cadvisor]
 warrig
+citadel
 
 [cadvisor:children]
 raspberrypis

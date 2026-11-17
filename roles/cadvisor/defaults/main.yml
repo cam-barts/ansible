@@ -3,6 +3,9 @@
 # (Raspberry Pis + warrig) that Prometheus scrapes over the LAN at
 # <host>:{{ cadvisor_port }}. Override per-host in host_vars as needed.
 
+# gcr.io stopped at v0.52.1; newer releases are on ghcr.io/google/cadvisor,
+# which publishes amd64/arm64 ONLY. The Pis are armv7 (32-bit armhf), so they
+# must stay on this gcr.io image. Override image+version per host for amd64.
 cadvisor_image: gcr.io/cadvisor/cadvisor
 cadvisor_version: v0.52.1
 cadvisor_container_name: cadvisor
@@ -28,6 +31,18 @@ cadvisor_publish_host_ip: "0.0.0.0"
 # --docker_only limits cAdvisor to docker cgroups instead of every system
 # cgroup: meaningfully lighter on weak CPUs (the Pis).
 cadvisor_docker_only: true
+
+# Cardinality controls, appended to the container command on every host.
+# store_container_labels=false stops every docker label (config_hash, image,
+# config_files...) from becoming a Prometheus label, which minted new series
+# on every recreate. The whitelist keeps the three labels anything queries:
+# compose project/service for grouping, and oneoff, which the Grafana
+# "Container Still Missing" alert filters on. 30s housekeeping (default 1s)
+# matches the 15s scrape without sampling far faster than anyone reads.
+cadvisor_extra_args:
+  - --store_container_labels=false
+  - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service,com.docker.compose.oneoff
+  - --housekeeping_interval=30s
 
 # Extra docker networks to attach (list of {name: ...}). Empty = default bridge.
 # For citadel: [{name: monitoring_default}] with cadvisor_publish_port: false.

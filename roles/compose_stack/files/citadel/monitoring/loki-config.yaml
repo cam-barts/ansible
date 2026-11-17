@@ -17,10 +17,15 @@ common:
       store: inmemory
 
 query_range:
+  # cache_results defaults to false, so the embedded cache below was configured
+  # but never consulted: every 5m dashboard refresh re-scanned the full range.
+  cache_results: true
   results_cache:
     cache:
       embedded_cache:
         enabled: true
+        # Loki copies this size into the sibling query_range caches (index_stats,
+        # volume, series, label), so the real ceiling is ~5x this. Keep it small.
         max_size_mb: 100
 
 schema_config:
@@ -40,7 +45,22 @@ limits_config:
   max_global_streams_per_user: 0
   max_query_length: 0
   max_concurrent_tail_requests: 100
+  # citadel has 4 cores; the defaults (32 / 128) oversubscribe the scheduler,
+  # which is what turns a slow query into a cancel-storm under load.
+  max_query_parallelism: 16
+  tsdb_max_query_parallelism: 32
   retention_period: 2160h
+  # Per-stream overrides (highest priority wins; selectors match labels only).
+  # BunkerWeb is the security history the ban pipeline is audited against, so
+  # it outlives the 90d default; chatty app logs nobody reads past two weeks
+  # go sooner.
+  retention_stream:
+    - selector: '{compose_project="bunkerweb"}'
+      priority: 2
+      period: 4320h
+    - selector: '{compose_service=~"windmill_worker.*|sockpuppetbrowser|changedetection"}'
+      priority: 1
+      period: 336h
   deletion_mode: filter-and-delete
 
 compactor:
@@ -52,10 +72,28 @@ compactor:
   delete_request_store: filesystem
 
 ingester:
-  max_chunk_age: 2h
+  # Per-container streams are low-volume, so with the 30m idle default 83% of
+  # chunks flushed under 10 KB (~1% of the 1.5 MB target; only 23 of ~5600 ever
+  # flushed "full"). Holding them longer means fewer, fuller chunks and fewer
+  # index lookups per query. The WAL covers a crash in between.
+  chunk_idle_period: 2h
+  max_chunk_age: 4h
+  # Grafana's best-practice guidance: snappy decompresses much faster than the
+  # gzip default at a modest size cost. Old chunks keep gzip and age out.
+  chunk_encoding: snappy
 
 ruler:
   alertmanager_url: http://localhost:9093
+  # Recording rules (rules/fake/*.yaml, auth disabled => tenant "fake") are
+  # evaluated here and remote-written to Prometheus, so dashboards read cheap
+  # PromQL instead of rescanning raw BunkerWeb lines on every refresh.
+  wal:
+    dir: /tmp/loki/ruler-wal
+  remote_write:
+    enabled: true
+    clients:
+      prometheus:
+        url: http://prometheus:9090/api/v1/write
 
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
 # analytics to Grafana Labs. These statistics are sent to https://stats.grafana.org/

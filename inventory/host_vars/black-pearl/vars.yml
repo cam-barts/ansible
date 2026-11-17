@@ -10,6 +10,11 @@ ansible_host: 192.168.1.84
 # live captures 2026-08-19; secret values live in vault.yml alongside.
 compose_stack_root: /home/pirate
 compose_stacks:
+  # Image is built on warrig and loaded by hand (no armv7 upstream image);
+  # see the comment in the compose file. pull: missing never pulls it.
+  ladder:
+    files:
+      - { src: black-pearl/ladder/docker-compose.yml, dest: docker-compose.yml, mode: "0644" }
   portainer_agent:
     files:
       - { src: black-pearl/portainer_agent/docker-compose.yml, dest: docker-compose.yml, mode: "0700" }

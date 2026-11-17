@@ -3,7 +3,9 @@ version: '3.8'
 services:
   prometheus:
     user: 1000:1000
-    image: prom/prometheus:latest
+    # Pinned 2026-11-14 to the digest that was running (verified identical).
+    # Bump deliberately: edit the tag, read the release notes, run the play.
+    image: prom/prometheus:v3.16.0
     container_name: prometheus
     restart: always
     labels:
@@ -17,17 +19,30 @@ services:
     volumes:
       - /home/nux/docker/monitoring/prometheus_data:/prometheus
       - /home/nux/docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    mem_limit: 1g
+    # 1g was already hit (995 MB working-set peak, 2026-11-12/14) before the
+    # 180d retention and remote-write receiver; citadel has ~23 GB free.
+    mem_limit: 2g
     ports:
       - "9090:9090"
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+      # 180d to match BunkerWeb log retention, so the Loki recording rules
+      # (remote-written here) cover the same window as the raw logs. The size
+      # cap is the backstop against a cardinality blowup filling the disk.
+      - "--storage.tsdb.retention.time=180d"
+      - "--storage.tsdb.retention.size=100GB"
+      # Receiver for the Loki ruler's remote_write.
+      - "--web.enable-remote-write-receiver"
 
   grafana:
     user: 1000:1000
     mem_limit: 1g
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.3.1
     container_name: grafana
+    environment:
+      # SQLite was in rollback-journal mode, so alert-rule writes blocked readers and
+      # produced SQLITE_BUSY ("database is locked"). WAL lets them run concurrently.
+      - GF_DATABASE_WAL=true
     restart: always
     labels:
       - autoheal=true
@@ -44,14 +59,24 @@ services:
 
   loki:
     user: 1000:1000
-    mem_limit: 1g
-    image: grafana/loki:latest
+    # Peaked at 715 MB of 1g; chunk_idle_period 2h / max_chunk_age 4h now hold
+    # chunks in memory longer, so give it headroom.
+    mem_limit: 2g
+    image: grafana/loki:3.7.10
     container_name: loki
     restart: always
+    # Never ship Loki's own logs through the loki driver (the daemon default):
+    # it would push into itself and can wedge a dockerd restart.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     command: -config.file=/etc/loki/local-config.yaml --pattern-ingester.enabled=true
     volumes:
       - /home/nux/docker/monitoring/loki_data:/tmp/loki
       - /home/nux/docker/monitoring/loki-config.yaml:/etc/loki/local-config.yaml
+      - /home/nux/docker/monitoring/loki-rules/bunkerweb.yaml:/tmp/loki/rules/fake/bunkerweb.yaml:ro
     ports:
       - "3100:3100"
 

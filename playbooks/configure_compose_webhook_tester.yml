@@ -1,0 +1,14 @@
+---
+# Tracks warrig's webhook-tester compose stack (tarampampam/webhook-tester,
+# webhook.coder.cam) byte-faithfully and reconciles its containers to it. It
+# replaced the 5-container webhook.site stack on 2026-11-11.
+#
+#   ansible-playbook --check --diff playbooks/configure_compose_webhook_tester.yml
+- name: Track the webhook-tester compose stack
+  hosts: warrig
+  gather_facts: false
+  vars:
+    ansible_become: false
+    compose_stack_name: webhook-tester
+  roles:
+    - compose_stack

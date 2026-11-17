@@ -1,0 +1,96 @@
+# Production Moodle "SRE Academy" (https://learn.coder.cam). Hand-deployed on warrig; see README.md.
+name: moodle
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: moodle-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moodle
+      POSTGRES_DB: moodle
+      POSTGRES_PASSWORD: ${DB_PASS}
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "effective_cache_size=768MB",
+              "-c", "work_mem=8MB", "-c", "maintenance_work_mem=64MB", "-c", "max_connections=60"]
+    shm_size: 256mb
+    mem_limit: 1g
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodle"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    # Sessions + MUC application/session caches. No persistence on purpose: everything in it is
+    # rebuildable, a restart only logs users out. Not published; reachable only on this compose network.
+    image: redis:7-alpine
+    container_name: moodle-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru"]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: erseco/alpine-moodle:5.1.8
+    container_name: moodle-app
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    env_file: .env          # DB_PASS, MOODLE_USERNAME/PASSWORD/EMAIL, SMTP_*
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: db
+      DB_NAME: moodle
+      DB_USER: moodle
+      SITE_URL: https://learn.coder.cam
+      SSLPROXY: "true"          # TLS ends at BunkerWeb; Moodle must still emit https URLs
+      REVERSEPROXY: "false"     # keep Moodle's host check; wwwroot has no port, so no 303 loop
+      # Trust X-Forwarded-For only from the docker-proxy hop (gateway of this compose network, in the daemon's
+      # 10.210.0.0/15 pool; every host-port connection arrives from it) and citadel (if userland-proxy is ever
+      # off). BunkerWeb appends the real client as the LAST entry, REAL_IP_RECURSIVE=off takes that one.
+      # Caveat: anyone on the LAN can hit 8110 directly and forge XFF (README: LAN port limitation).
+      REAL_IP_FROM: "10.210.0.0/15,192.168.1.88"
+      MOODLE_SITENAME: SREAcademy  # install.php breaks on spaces; apply-theme.sh sets "SRE Academy"
+      MOODLE_LANGUAGE: en
+      MOODLE_MAIL_NOREPLY_ADDRESS: learn@coder.cam
+      MOODLE_MAIL_PREFIX: "[SRE Academy]"
+      REDIS_HOST: redis         # session handler + MUC store "redis1" (see README: Redis back-out trap)
+      RUN_CRON_TASKS: "true"
+      DEBUG: "false"
+      AUTO_UPDATE_MOODLE: "true"
+      SYNC_MOODLE_CODE: never   # code comes from the image; a sync's rsync --delete must never touch the plugin bind mount
+      opcache_enable: "1"
+      opcache_memory_consumption: "128"
+      opcache_max_accelerated_files: "20000"
+      opcache_validate_timestamps: "0"   # restart the container after any PHP code change
+      memory_limit: 256M
+      post_max_size: 100M
+      upload_max_filesize: 100M
+      client_max_body_size: 100M
+      date_timezone: America/New_York
+      # install.php hardcodes directorypermissions 02777 (files 0666) into config.php on every recreate; make
+      # moodledata group-only (02770/0660). Runs after the entrypoint has made config.php read-only.
+      POST_CONFIGURE_COMMANDS: "chmod 644 /var/www/html/config.php && sed -i 's/directorypermissions = 02777;/directorypermissions = 02770;/' /var/www/html/config.php && chmod 444 /var/www/html/config.php && find /var/www/moodledata -perm /o=rwx -exec chmod o-rwx {} +"
+    ports:
+      - "8110:8080"
+    mem_limit: 2g
+    volumes:
+      - ./moodledata:/var/www/moodledata
+      - ./plugins/theme_boost_union:/var/www/html/public/theme/boost_union:ro
+      - ./plugins/availability_coursecompleted:/var/www/html/public/availability/condition/coursecompleted:ro
+      - ./plugins/filter_synhi:/var/www/html/public/filter/synhi:ro
+      - ./plugins/assignsubmission_responsetemplate:/var/www/html/public/mod/assign/submission/responsetemplate:ro
+      - ./config/zz-opcache.ini:/etc/php83/conf.d/zz-opcache.ini:ro
+      - ./config/zz-prod.conf:/etc/php83/php-fpm.d/zz-prod.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null -H 'Host: learn.coder.cam' http://localhost:8080/login/index.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
