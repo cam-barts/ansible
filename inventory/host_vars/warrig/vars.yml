@@ -341,8 +341,10 @@ compose_stacks:
       - { src: warrig/silverbullet/docker-compose.yaml.j2, dest: docker-compose.yaml, mode: "0640" }
       - { src: warrig/silverbullet/.env.j2, dest: .env, mode: "0640" }
       - { src: warrig/silverbullet/sidecar/indexer.py, dest: sidecar/indexer.py, mode: "0755" }
+      - { src: warrig/silverbullet/sidecar/karakeep_indexer.py, dest: sidecar/karakeep_indexer.py, mode: "0644" }
       - { src: warrig/silverbullet/sidecar/podcast_indexer.py, dest: sidecar/podcast_indexer.py, mode: "0644" }
       - { src: warrig/silverbullet/sidecar/test_indexer.py, dest: sidecar/test_indexer.py, mode: "0644" }
+      - { src: warrig/silverbullet/sidecar/test_karakeep_indexer.py, dest: sidecar/test_karakeep_indexer.py, mode: "0644" }
       - { src: warrig/silverbullet/sidecar/test_podcast_indexer.py, dest: sidecar/test_podcast_indexer.py, mode: "0644" }
   speedtest:
     files:
@@ -397,6 +399,7 @@ opnform_client_nuxt_api_secret: "{{ vault_opnform_client_nuxt_api_secret }}"
 opnform_db_password: "{{ vault_opnform_db_password }}"
 parakeet_sb_auth_token: "{{ vault_parakeet_sb_auth_token }}"
 pwndrop_secret_path: "{{ vault_pwndrop_secret_path }}"
+silverbullet_karakeep_api_key: "{{ vault_karakeep_api_key }}"
 silverbullet_meili_master_key: "{{ vault_silverbullet_meili_master_key }}"
 silverbullet_minuspod_feed_key: "{{ vault_silverbullet_minuspod_feed_key }}"
 silverbullet_render_token: "{{ vault_silverbullet_render_token }}"

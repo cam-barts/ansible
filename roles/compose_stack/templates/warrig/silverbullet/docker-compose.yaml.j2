@@ -299,3 +299,44 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+
+  # ---------------------------------------------------------------------
+  # Karakeep bookmark mirror (2026-11-17). Copies bookmarks into a `karakeep`
+  # index on THIS Meilisearch so they appear in Fast Search and SearXNG next
+  # to notes, blog and podcasts. Karakeep keeps its own Meilisearch for its own
+  # UI; this never writes to Karakeep. Same chunker (indexer.chunk_body) and
+  # same `nomic` embedder as the notes, one document per chunk.
+  #
+  # Reaches Karakeep at its host-published port (8679) through host-gateway
+  # rather than https://hoarder.coder.cam: no BunkerWeb/Cloudflare dependency,
+  # and multi-MB page bodies stay on the box. Each pass lists bookmarks without
+  # content and fetches full content only for bookmarks whose fingerprint
+  # changed, so a 15 min interval costs ~8 small requests when idle.
+  # ---------------------------------------------------------------------
+  karakeep-indexer:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    restart: unless-stopped
+    depends_on:
+      - meilisearch
+    environment:
+      - MEILI_URL=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      - KARAKEEP_URL=http://host.docker.internal:8679
+      - KARAKEEP_API_KEY=${KARAKEEP_API_KEY}
+      - KARAKEEP_PUBLIC_URL=https://hoarder.coder.cam
+      - KARAKEEP_INDEX=karakeep
+      - KARAKEEP_INDEX_INTERVAL=900
+      - OLLAMA_EMBED_URL=http://host.docker.internal:11434/api/embeddings
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./sidecar:/sidecar:ro
+    working_dir: /sidecar
+    command: ["uv", "run", "--no-project", "/sidecar/karakeep_indexer.py", "serve"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
