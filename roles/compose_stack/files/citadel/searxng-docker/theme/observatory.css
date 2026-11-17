@@ -242,6 +242,64 @@ article.result:has(a.url_header[href^="https://minuspod.coder.cam"]) .url_wrappe
   );
 }
 
+/* ==========================================================================
+   Karakeep bookmark results, same treatment as notes/podcasts in Observatory
+   purple.
+
+   Added 2026-11-17. Bookmarks link to arbitrary original URLs, so there is no
+   host to key on. The karakeep index stores a `searxUrl` that is the original
+   URL plus a `#kk` marker, and these rules match on that suffix. URLs that
+   already have a fragment (hash routes, anchors) are stored untouched and so
+   render unbadged; rewriting them could break the link. Purple #bb9af7 is --obs-purple, unused by the
+   NOTE (chrome) and PODCAST (green) badges.
+   ========================================================================== */
+
+article.result:has(a.url_header[href$="#kk"]) {
+  --kk-accent: #bb9af7;
+  border-left: 3px solid var(--kk-accent);
+  padding-left: 0.75rem;
+  border-radius: 3px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(187, 154, 247, 0.10) 0%,
+    rgba(187, 154, 247, 0.03) 28%,
+    transparent 65%
+  );
+}
+
+/* "BOOKMARK" tag before the title, matching NOTE and PODCAST. */
+article.result:has(a.url_header[href$="#kk"]) h3::before {
+  content: "BOOKMARK";
+  display: inline-block;
+  margin-right: 0.5em;
+  padding: 0.05em 0.45em;
+  border-radius: 3px;
+  background: #bb9af7;
+  color: #07090d;
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  vertical-align: 0.14em;
+}
+
+/* The URL line is the real site here, so it is worth reading: muted only as
+   much as the notes one. */
+article.result:has(a.url_header[href$="#kk"]) .url_wrapper {
+  opacity: 0.65;
+}
+
+/* Light style needs a softer wash to stay readable, same as notes. */
+:root.theme-light article.result:has(a.url_header[href$="#kk"]),
+:root:not(.theme-dark):not(.theme-black):not(.theme-auto)
+  article.result:has(a.url_header[href$="#kk"]) {
+  background-image: linear-gradient(
+    90deg,
+    rgba(187, 154, 247, 0.16) 0%,
+    rgba(187, 154, 247, 0.05) 28%,
+    transparent 65%
+  );
+}
+
 /* --- Wordmark: stock SearXNG logotype recoloured to Observatory chrome ------
    `.title` is a <div class="title"><h1>SearXNG</h1></div> whose visible logo is
    a background-image (stock: img/searxng.png). The h1 text is present but
