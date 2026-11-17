@@ -4,6 +4,21 @@
 # sole ingress for ~48 hostnames and carries cloudflared), so there is no
 # `state: present` compose task here and there should never be one. See README.
 
+# The DB password lives only in these two 0600 env files, never in the compose file.
+- name: Template the BunkerWeb secret env files
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ bunkerweb_stack_dir }}/{{ item }}"
+    owner: "{{ bunkerweb_stack_file_owner }}"
+    group: "{{ bunkerweb_stack_file_group }}"
+    mode: "0600"
+    backup: true
+  loop:
+    - bw-secrets.env
+    - bw-db.env
+  no_log: true
+  diff: false
+
 # diff: false so `ansible-playbook --diff` cannot print the rendered secrets.
 - name: Template the BunkerWeb compose file
   ansible.builtin.template:

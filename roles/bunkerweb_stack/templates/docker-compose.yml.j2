@@ -6,7 +6,8 @@ x-bw-env: &bw-env
   # Stock default was 32934 (Meta). A whitelist hit bypasses every later security
   # check, so that ASN could never reach the auto-ban pipeline. Blanked deliberately.
   WHITELIST_ASN: ""
-  DATABASE_URI: "mariadb+pymysql://bunkerweb:{{ bunkerweb_db_password }}@bw-db:3306/db" # Remember to set a stronger password for the database
+  # DATABASE_URI lives in bw-secrets.env (0600), not here: this file is 0640 and
+  # gets read and grepped, and a debug agent printed the password from it on 2026-10-31.
   USE_ROBOTSTXT: "yes"
   USE_WHITELIST: "yes"
   API_RATE_LIMIT_ENABLED: "no"
@@ -19,6 +20,8 @@ services:
       - "80:8080/tcp"
       - "443:8443/tcp"
       - "443:8443/udp" # For QUIC / HTTP3 support
+    env_file:
+      - bw-secrets.env
     environment:
       <<: *bw-env # We use the anchor to avoid repeating the same settings for all services
       # 1.6.14 changed this default to "no"; 1.6.9 behaved as "yes". Pinned so the
@@ -39,6 +42,8 @@ services:
   bw-scheduler:
     image: bunkerity/bunkerweb-scheduler:1.6.15
     mem_limit: 2g
+    env_file:
+      - bw-secrets.env
     environment:
       <<: *bw-env
       BUNKERWEB_INSTANCES: "bunkerweb" # Make sure to set the correct instance name
@@ -58,6 +63,8 @@ services:
     image: bunkerity/bunkerweb-api:1.6.15
     mem_limit: 512m
     restart: "unless-stopped"
+    env_file:
+      - bw-secrets.env
     environment:
       <<: *bw-env
       API_USERNAME: "nux"
@@ -73,6 +80,8 @@ services:
   bw-ui:
     image: bunkerity/bunkerweb-ui:1.6.15
     mem_limit: 512m
+    env_file:
+      - bw-secrets.env
     environment:
       <<: *bw-env
     restart: "unless-stopped"
@@ -85,11 +94,12 @@ services:
     mem_limit: 3g
     # We set the max allowed packet size to avoid issues with large queries
     command: --max-allowed-packet=268435456
+    env_file:
+      - bw-db.env
     environment:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
       MYSQL_DATABASE: "db"
       MYSQL_USER: "bunkerweb"
-      MYSQL_PASSWORD: "{{ bunkerweb_db_password }}" # Remember to set a stronger password for the database
     volumes:
       - bw-data:/var/lib/mysql
     restart: "unless-stopped"
