@@ -246,15 +246,15 @@ article.result:has(a.url_header[href^="https://minuspod.coder.cam"]) .url_wrappe
    Karakeep bookmark results, same treatment as notes/podcasts in Observatory
    purple.
 
-   Added 2026-11-17. Bookmarks link to arbitrary original URLs, so there is no
-   host to key on. The karakeep index stores a `searxUrl` that is the original
-   URL plus a `#kk` marker, and these rules match on that suffix. URLs that
-   already have a fragment (hash routes, anchors) are stored untouched and so
-   render unbadged; rewriting them could break the link. Purple #bb9af7 is --obs-purple, unused by the
-   NOTE (chrome) and PODCAST (green) badges.
+   Added 2026-11-17. Bookmarks link to arbitrary original URLs, so there is
+   no host to key on the way NOTE and PODCAST do. Instead the engine label:
+   the container start command (docker-compose.yaml) and apply-observatory.sh
+   patch searx/templates/simple/macros.html so each engine renders as
+   <span data-engine="name">, and these rules match the `karakeep` one. Purple
+   #bb9af7 is --obs-purple, unused by NOTE (chrome) and PODCAST (green).
    ========================================================================== */
 
-article.result:has(a.url_header[href$="#kk"]) {
+article.result:has(.engines span[data-engine="karakeep"]) {
   --kk-accent: #bb9af7;
   border-left: 3px solid var(--kk-accent);
   padding-left: 0.75rem;
@@ -268,7 +268,7 @@ article.result:has(a.url_header[href$="#kk"]) {
 }
 
 /* "BOOKMARK" tag before the title, matching NOTE and PODCAST. */
-article.result:has(a.url_header[href$="#kk"]) h3::before {
+article.result:has(.engines span[data-engine="karakeep"]) h3::before {
   content: "BOOKMARK";
   display: inline-block;
   margin-right: 0.5em;
@@ -284,14 +284,14 @@ article.result:has(a.url_header[href$="#kk"]) h3::before {
 
 /* The URL line is the real site here, so it is worth reading: muted only as
    much as the notes one. */
-article.result:has(a.url_header[href$="#kk"]) .url_wrapper {
+article.result:has(.engines span[data-engine="karakeep"]) .url_wrapper {
   opacity: 0.65;
 }
 
 /* Light style needs a softer wash to stay readable, same as notes. */
-:root.theme-light article.result:has(a.url_header[href$="#kk"]),
+:root.theme-light article.result:has(.engines span[data-engine="karakeep"]),
 :root:not(.theme-dark):not(.theme-black):not(.theme-auto)
-  article.result:has(a.url_header[href$="#kk"]) {
+  article.result:has(.engines span[data-engine="karakeep"]) {
   background-image: linear-gradient(
     90deg,
     rgba(187, 154, 247, 0.16) 0%,

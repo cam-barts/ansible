@@ -72,6 +72,7 @@ services:
     # app, also makes the post-patch restart unnecessary (SearXNG reads static
     # files into memory at startup). The .gz/.br siblings go because they are
     # served in preference to the patched file. Idempotent across restarts.
+    # Also patches the engine-label template; see the comment at that step.
     entrypoint:
       - /bin/sh
       - -c
@@ -90,6 +91,22 @@ services:
             rm -f "$$d/$$f.gz" "$$d/$$f.br"
           done
           echo "observatory theme applied"
+        fi
+        # Engine label hook (2026-11-17): render each engine as
+        # <span data-engine="name"> so the theme can badge results by engine.
+        # Karakeep bookmarks link to arbitrary hosts, so unlike NOTE/PODCAST
+        # there is no URL to key on. Same container-layer edit as the CSS, so
+        # it has to be redone on every start; done before the app boots, so
+        # Jinja never caches the unpatched template. Warns rather than exits:
+        # a template change upstream should cost the badge, not the search.
+        t=/usr/local/searxng/searx/templates/simple/macros.html
+        if grep -qF '<span data-engine="{{ engine }}">{{ engine }}</span>' "$$t"; then
+          echo "engine label template already patched"
+        elif grep -qF '<span>{{ engine }}</span>' "$$t"; then
+          sed -i 's|<span>{{ engine }}</span>|<span data-engine="{{ engine }}">{{ engine }}</span>|' "$$t"
+          echo "engine label template patched"
+        else
+          echo "WARNING: engine <span> not found in $$t; BOOKMARK badge will not render" >&2
         fi
         exec /usr/local/searxng/entrypoint.sh
     # cap_drop:
