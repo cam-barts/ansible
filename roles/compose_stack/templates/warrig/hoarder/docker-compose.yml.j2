@@ -15,15 +15,15 @@ services:
       OPENAI_API_KEY: {{ hoarder_openai_api_key }}
       DATA_DIR: /data
   chrome:
-    image: gcr.io/zenika-hub/alpine-chrome:123
+    image: ghcr.io/karakeep-app/karakeep-chrome:release
     restart: unless-stopped
+    init: true
     command:
-      - --no-sandbox
       - --disable-gpu
       - --disable-dev-shm-usage
-      - --remote-debugging-address=0.0.0.0
-      - --remote-debugging-port=9222
       - --hide-scrollbars
+      - --disable-blink-features=AutomationControlled
+      - --window-size=1440,900
   meilisearch:
     image: getmeili/meilisearch:v1.11.1
     restart: unless-stopped
