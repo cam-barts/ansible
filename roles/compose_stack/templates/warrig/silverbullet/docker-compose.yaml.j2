@@ -53,7 +53,11 @@ services:
   # of pulling over HTTP. No more static IP / external-network bridge.
   # ---------------------------------------------------------------------
   meilisearch:
-    image: getmeili/meilisearch:v1.21
+    # v1.21 -> v1.56.2 on 2026-11-17 via dumpless upgrade (MEILI_UPGRADE_DB=true for
+    # one boot, then removed so a future bump can't migrate the DB unbacked). Picks up the v1.27.0 fix for
+    # every-40th-document embedding drops (meilisearch PR 5995). Pre-upgrade copy
+    # of the data dir: /ssd/silverbullet-meili_data.v1.21-bak-2026-11-17.
+    image: getmeili/meilisearch:v1.56.2
     restart: unless-stopped
     # Added 2026-10-12, resized 2026-10-13. The original 2g was sized from
     # LOGICAL data size (~86 MB of document store plus ~143 MB of float32
@@ -96,6 +100,10 @@ services:
       - MEILI_ENV=production
       - MEILI_NO_ANALYTICS=true
       - MEILI_HTTP_ADDR=0.0.0.0:7700
+      # Since v1.34.1 Meilisearch refuses outbound requests to non-global IPs
+      # (SSRF fix), which broke the Ollama embedder at host.docker.internal
+      # (host-gateway = docker0, 10.210.0.1 per daemon.json). Allow only that.
+      - MEILI_EXPERIMENTAL_ALLOWED_IP_NETWORKS=10.210.0.1/32
     volumes:
       # On the SSD (2026-11-16): indexing is ~1,000 small writes/s, which pinned
       # warrig's spinning sda at ~90% util. Rebuildable, and never backed up
