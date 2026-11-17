@@ -56,9 +56,42 @@ services:
       - "8214:8080"
     volumes:
       - ./searxng:/etc/searxng:rw
+      # Observatory theme, tracked in Ansible (searxng/ belongs to the container's
+      # user, so Ansible cannot write there). A DIRECTORY mount on purpose: a
+      # single-file mount pins the old inode when Ansible replaces the file.
+      - ./theme:/etc/searxng-theme:ro
     environment:
       - SEARXNG_BASE_URL=https://searx.coder.cam/
       - FORCE_OWNERSHIP=true
+    # Observatory theme, re-applied on EVERY container start. SearXNG has no
+    # custom-CSS hook, so the theme (./theme/observatory.css, mounted read-only
+    # at /etc/searxng-theme) is appended to the image's compiled stylesheet. That edit lives in
+    # the container layer, so any recreate (an Ansible play, Watchtower) used to
+    # drop it until apply-observatory.sh was run by hand; it was lost that way
+    # on 2026-11-16. Doing it here, before the image's entrypoint starts the
+    # app, also makes the post-patch restart unnecessary (SearXNG reads static
+    # files into memory at startup). The .gz/.br siblings go because they are
+    # served in preference to the patched file. Idempotent across restarts.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        d=/usr/local/searxng/searx/static/themes/simple
+        if [ -f /etc/searxng-theme/observatory.css ]; then
+          for f in sxng-ltr.min.css sxng-rtl.min.css; do
+            [ -f "$$d/$$f" ] || continue
+            sed -i '/OBSERVATORY_BEGIN/,/OBSERVATORY_END/d' "$$d/$$f"
+            # Newline only if the file lacks one (the stock minified CSS does),
+            # so restarts do not stack blank lines.
+            [ -n "$$(tail -c1 "$$d/$$f")" ] && printf '\n' >> "$$d/$$f"
+            { printf '/*__OBSERVATORY_BEGIN__*/\n'
+              cat /etc/searxng-theme/observatory.css
+              printf '\n/*__OBSERVATORY_END__*/\n'; } >> "$$d/$$f"
+            rm -f "$$d/$$f.gz" "$$d/$$f.br"
+          done
+          echo "observatory theme applied"
+        fi
+        exec /usr/local/searxng/entrypoint.sh
     # cap_drop:
     #   - ALL
     # cap_add:

@@ -97,7 +97,10 @@ services:
       - MEILI_NO_ANALYTICS=true
       - MEILI_HTTP_ADDR=0.0.0.0:7700
     volumes:
-      - ./meili_data:/meili_data
+      # On the SSD (2026-11-16): indexing is ~1,000 small writes/s, which pinned
+      # warrig's spinning sda at ~90% util. Rebuildable, and never backed up
+      # (rsnapshot excludes the old ./meili_data path too).
+      - /ssd/silverbullet-meili_data:/meili_data
     # 7701 published on all host interfaces so the BunkerWeb reverse proxy on
     # Citadel can reach it as warrig:7701 and serve https://search.bullet.coder.cam.
     # Loopback (127.0.0.1:7701) still works for local runbook/curl. Every route
